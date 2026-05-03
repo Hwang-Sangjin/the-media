@@ -1,6 +1,5 @@
 import { create } from "zustand";
 
-// 씬 ID 정의
 export const SCENES = {
   LOADING: "loading",
   TITLE: "title",
@@ -10,7 +9,6 @@ export const SCENES = {
   ENDING: "ending",
 };
 
-// 씬 순서 (이전/다음 이동에 사용)
 export const SCENE_ORDER = [
   SCENES.LOADING,
   SCENES.TITLE,
@@ -21,35 +19,43 @@ export const SCENE_ORDER = [
 ];
 
 export const useSceneStore = create((set, get) => ({
-  // 현재 씬
   currentScene: SCENES.LOADING,
-
-  // 전환 중 여부 (검은 화면 페이드 중일 때 true)
   isTransitioning: false,
-
-  // 사운드 활성화 여부
   soundEnabled: false,
 
-  // 씬 이동 함수 (검은 화면 transition 경유)
+  // 씬 내부 stage (씬 1: 'space' → 'tesseract', 씬 3: 'digit' → 'architect')
+  stage: "main",
+
   goToScene: (sceneId) => {
     const { currentScene, isTransitioning } = get();
     if (isTransitioning || currentScene === sceneId) return;
 
-    // 1. 전환 시작 (검은 화면 페이드 인)
     set({ isTransitioning: true });
 
-    // 2. 검은 화면 유지 후 씬 변경
     setTimeout(() => {
-      set({ currentScene: sceneId });
-
-      // 3. 검은 화면 페이드 아웃
+      set({ currentScene: sceneId, stage: "main" }); // 씬 변경 시 stage 리셋
       setTimeout(() => {
         set({ isTransitioning: false });
       }, 400);
     }, 600);
   },
 
-  // 다음 씬으로 이동
+  // 같은 씬 내에서 stage만 전환 (검은 화면 경유)
+  goToStage: (newStage) => {
+    const { stage, isTransitioning } = get();
+    if (isTransitioning || stage === newStage) return;
+
+    set({ isTransitioning: true });
+
+    setTimeout(() => {
+      set({ stage: newStage });
+      window.scrollTo(0, 0); // 새 stage에서 스크롤 리셋
+      setTimeout(() => {
+        set({ isTransitioning: false });
+      }, 400);
+    }, 600);
+  },
+
   goToNext: () => {
     const { currentScene, goToScene } = get();
     const currentIndex = SCENE_ORDER.indexOf(currentScene);
@@ -58,7 +64,6 @@ export const useSceneStore = create((set, get) => ({
     }
   },
 
-  // 이전 씬으로 이동
   goToPrev: () => {
     const { currentScene, goToScene } = get();
     const currentIndex = SCENE_ORDER.indexOf(currentScene);
@@ -67,6 +72,5 @@ export const useSceneStore = create((set, get) => ({
     }
   },
 
-  // 사운드 토글
   toggleSound: () => set((state) => ({ soundEnabled: !state.soundEnabled })),
 }));

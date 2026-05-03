@@ -9,10 +9,15 @@ import { useKeyboardNavigation } from "./hooks/useKeyboardNavigation";
 import Transition from "./components/Transition/Transition";
 import DotNavigation from "./components/Navigation/DotNavigation";
 import Header from "./components/Navigation/Header";
+import { useEffect } from "react"; // 추가
 
 function App() {
   const currentScene = useSceneStore((state) => state.currentScene);
   useKeyboardNavigation(); // 추가
+
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [currentScene]);
 
   const renderScene = () => {
     switch (currentScene) {
@@ -34,7 +39,7 @@ function App() {
   };
 
   return (
-    <div className="relative w-screen h-screen overflow-hidden">
+    <div className="relative w-screen h-screen ">
       {renderScene()}
       <Header />
       <DotNavigation />
