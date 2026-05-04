@@ -3,7 +3,8 @@ import { useSceneStore, SCENES } from "../../store/sceneStore";
 import { usePreloader } from "../../hooks/usePreloader";
 import CountdownFrame from "./CountdownFrame";
 import FilmPerforation from "./FilmPerforation";
-import FilmGrain from "./FilmGrain";
+
+import PaperTexture from "./PaperTexture";
 
 const COUNTDOWN_START = 5;
 const COUNTDOWN_INTERVAL = 1000;
@@ -17,12 +18,23 @@ export default function Loading() {
   const { isComplete: assetsLoaded } = usePreloader();
 
   // 카운트다운 진행
+  // useEffect(() => {
+  //   if (count <= 0) {
+  //     setCountdownComplete(true);
+  //     setFadeToBlack(true);
+  //     return;
+  //   }
+
+  //   const timer = setTimeout(() => {
+  //     setCount((prev) => prev - 1);
+  //   }, COUNTDOWN_INTERVAL);
+
+  //   return () => clearTimeout(timer);
+  // }, [count]);
+  // 카운트다운 진행
   useEffect(() => {
-    if (count <= 0) {
-      setCountdownComplete(true);
-      setFadeToBlack(true);
-      return;
-    }
+    // 디버그: 1에서 멈춤
+    if (count <= 1) return;
 
     const timer = setTimeout(() => {
       setCount((prev) => prev - 1);
@@ -51,11 +63,20 @@ export default function Loading() {
         }}
       >
         <div className="relative w-full h-full flex items-center justify-center">
-          <FilmPerforation />
-          <CountdownFrame number={count > 0 ? count : 1} />
-          <FilmGrain />
+          {/* 1. 종이 텍스처 배경 */}
+          <PaperTexture />
 
-          <div className="absolute bottom-8 left-1/2 -translate-x-1/2 font-mono text-white/40 text-xs tracking-widest">
+          {/* 2. 카운트다운 (가운데) */}
+          <CountdownFrame number={count > 0 ? count : 1} />
+
+          {/* 3. 그레인 + 비네팅 (위에 오버레이) */}
+          {/* <FilmGrain /> */}
+
+          {/* 4. 프레임 정보 */}
+          <div
+            className="absolute bottom-8 left-1/2 -translate-x-1/2 font-mono text-xs tracking-widest"
+            style={{ color: "rgba(40,20,15,0.5)" }}
+          >
             FRAME {String(Math.max(count, 1)).padStart(2, "0")}
           </div>
         </div>
