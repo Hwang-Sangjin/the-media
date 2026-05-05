@@ -1,4 +1,18 @@
+import { useEffect, useState } from "react";
+
 export default function CountdownFrame({ number }) {
+  const [isFlickering, setIsFlickering] = useState(false);
+
+  // number가 바뀔 때마다 플리커 트리거
+  useEffect(() => {
+    setIsFlickering(true);
+    const timer = setTimeout(() => {
+      setIsFlickering(false);
+    }, 100); // 플리커 지속 시간
+
+    return () => clearTimeout(timer);
+  }, [number]);
+
   return (
     <div
       className="relative flex items-center justify-center"
@@ -34,19 +48,35 @@ export default function CountdownFrame({ number }) {
         />
       </svg>
 
-      {/* 큰 숫자 */}
+      {/* 큰 숫자 - 플리커 효과 */}
       <div
+        key={number} // 숫자 바뀔 때마다 컴포넌트 리마운트 → 애니메이션 재시작
         className="relative font-bebas font-black select-none"
         style={{
           fontSize: "clamp(180px, 30vw, 500px)",
           lineHeight: 1,
           color: "#3a1a14",
           letterSpacing: "0",
-          transform: "translateY(0.05em)", // 폰트 메트릭 보정
+          transform: "translateY(0.05em)",
+          animation: isFlickering ? "number-flicker 280ms ease-out" : "none",
         }}
       >
         {number}
       </div>
+
+      {/* 플리커 keyframe */}
+      <style>{`
+        @keyframes number-flicker {
+          0% { opacity: 0; }
+          15% { opacity: 1; }
+          25% { opacity: 0.3; }
+          35% { opacity: 1; }
+          50% { opacity: 0.5; }
+          65% { opacity: 1; }
+          80% { opacity: 0.7; }
+          100% { opacity: 1; }
+        }
+      `}</style>
     </div>
   );
 }
