@@ -5,6 +5,9 @@ import CountdownFrame from "./CountdownFrame";
 import FilmPerforation from "./FilmPerforation";
 
 import PaperTexture from "./PaperTexture";
+import Crosshair from "./Crosshair";
+import SweepOverlay from "./SweepOverlay";
+import Vignette from "./Vignette";
 
 const COUNTDOWN_START = 5;
 const COUNTDOWN_INTERVAL = 1000;
@@ -65,6 +68,9 @@ export default function Loading() {
         <div className="relative w-full h-full flex items-center justify-center">
           {/* 1. 종이 텍스처 배경 */}
           <PaperTexture />
+          <Crosshair />
+          <SweepOverlay />
+          <Vignette />
 
           {/* 2. 카운트다운 (가운데) */}
           <CountdownFrame number={count > 0 ? count : 1} />

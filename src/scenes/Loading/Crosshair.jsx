@@ -11,7 +11,7 @@ export default function Crosshair() {
         x2="100%"
         y2="50%"
         stroke="rgba(40, 30, 25, 0.55)"
-        strokeWidth="1.5"
+        strokeWidth="5"
       />
 
       {/* 세로 선 — 화면 정중앙 수직 */}
@@ -21,7 +21,7 @@ export default function Crosshair() {
         x2="50%"
         y2="100%"
         stroke="rgba(40, 30, 25, 0.55)"
-        strokeWidth="1.5"
+        strokeWidth="5"
       />
     </svg>
   );
