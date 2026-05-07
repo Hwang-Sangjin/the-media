@@ -1,16 +1,17 @@
 import { Text } from "@react-three/drei";
-import { useFrame } from "@react-three/fiber";
+import { useFrame, useThree } from "@react-three/fiber";
 import { useRef, useState, useEffect } from "react";
 
-export default function TitleText({ hasEntered }) {
+export default function TitleText({ hasEntered, isZooming }) {
   const groupRef = useRef();
+  const { camera } = useThree();
   const [opacity, setOpacity] = useState(0);
+  const zoomStartTime = useRef(null);
 
-  // 진입 후 천천히 페이드인
+  // 진입 후 페이드인
   useEffect(() => {
     if (!hasEntered) return;
 
-    // 1초 정도 대기 후 페이드인 시작
     const timer = setTimeout(() => {
       let progress = 0;
       const interval = setInterval(() => {
@@ -21,7 +22,7 @@ export default function TitleText({ hasEntered }) {
         } else {
           setOpacity(progress);
         }
-      }, 30); // 약 3초 동안 페이드인
+      }, 30);
 
       return () => clearInterval(interval);
     }, 1000);
@@ -29,11 +30,34 @@ export default function TitleText({ hasEntered }) {
     return () => clearTimeout(timer);
   }, [hasEntered]);
 
-  // 미세한 떠다니는 움직임
+  // zoom 시작 시점 기록
+  useEffect(() => {
+    if (isZooming) {
+      zoomStartTime.current = Date.now();
+    }
+  }, [isZooming]);
+
   useFrame((state) => {
     if (!groupRef.current) return;
-    groupRef.current.position.y =
-      Math.sin(state.clock.elapsedTime * 0.5) * 0.05;
+
+    // 미세한 떠다니는 움직임 (zoom 중에는 멈춤)
+    if (!isZooming) {
+      groupRef.current.position.y =
+        Math.sin(state.clock.elapsedTime * 0.5) * 0.05;
+    }
+
+    // 카메라 zoom-in 애니메이션
+    if (isZooming && zoomStartTime.current) {
+      const elapsed = (Date.now() - zoomStartTime.current) / 1000; // 초 단위
+      const duration = 3; // 3초 동안 zoom
+
+      // ease-in 효과 (천천히 시작, 빠르게 가속)
+      const t = Math.min(elapsed / duration, 1);
+      const eased = t * t * t; // cubic ease-in
+
+      // 카메라 z: 8 → -3 (텍스트 z=0 통과)
+      camera.position.z = 8 - eased * 11;
+    }
   });
 
   return (
@@ -56,7 +80,6 @@ export default function TitleText({ hasEntered }) {
         />
       </Text>
 
-      {/* 약간의 라이팅 — 텍스트가 살짝 빛나도록 */}
       <ambientLight intensity={0.5} />
       <pointLight position={[0, 0, 5]} intensity={0.5} />
     </group>
