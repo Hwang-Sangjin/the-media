@@ -1,67 +1,94 @@
 import { Canvas } from "@react-three/fiber";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useSceneStore, SCENES } from "../../store/sceneStore";
 import TitleText from "./TitleText";
+import IntroText from "./IntroText";
+
+// 시퀀스 타이밍 (ms)
+const STUDIO_START = 1000; // 1초 후 Studio 등장
+const DIRECTOR_START = 6000; // 6초 후 Director 등장
+const TITLE_START = 11000; // 11초 후 THE MEDIA 등장
+const BUTTON_START = 14000; // 14초 후 WATCH 버튼 등장
 
 export default function Title() {
-  const [hasEntered, setHasEntered] = useState(false);
+  const [elapsed, setElapsed] = useState(0);
   const [isZooming, setIsZooming] = useState(false);
+  const startTime = useRef(null);
   const goToScene = useSceneStore((state) => state.goToScene);
 
-  // 진입 페이드인
+  // 경과 시간 추적
   useEffect(() => {
-    requestAnimationFrame(() => {
-      setHasEntered(true);
-    });
+    startTime.current = Date.now();
+
+    let rafId;
+    const tick = () => {
+      setElapsed(Date.now() - startTime.current);
+      rafId = requestAnimationFrame(tick);
+    };
+    rafId = requestAnimationFrame(tick);
+
+    return () => cancelAnimationFrame(rafId);
   }, []);
 
-  // zoom-in 시작
   const handleStart = () => {
     if (isZooming) return;
     setIsZooming(true);
   };
 
-  // zoom 애니메이션 끝나면 Scene 1으로 (3.5초 후)
+  // zoom 끝나면 Scene 1으로
   useEffect(() => {
     if (!isZooming) return;
     const timer = setTimeout(() => {
-      // 검은 화면 transition 거치지 않고 바로 Scene 1으로
-      // (이미 검은 화면 상태이니까)
       useSceneStore.setState({ currentScene: SCENES.SCENE_01 });
     }, 3500);
     return () => clearTimeout(timer);
   }, [isZooming]);
 
+  // 타이틀 단계 체크 (THE MEDIA 등장 시점인지)
+  const isTitleStage = elapsed >= TITLE_START;
+  const isButtonStage = elapsed >= BUTTON_START && !isZooming;
+
   return (
     <div className="relative w-screen h-screen bg-black overflow-hidden">
-      {/* 3D Canvas */}
-      <Canvas
-        camera={{
-          position: [0, 0, 8],
-          fov: 50,
-        }}
-      >
-        <TitleText hasEntered={hasEntered} isZooming={isZooming} />
-      </Canvas>
+      {/* 1. Studio Intro (HTML) */}
+      <IntroText
+        text="Eudaimonia Studios Present"
+        startTime={STUDIO_START}
+        elapsed={elapsed}
+      />
 
-      {/* Watch 버튼 - zoom 시작하면 사라짐 */}
+      {/* 2. Director Intro (HTML) */}
+      <IntroText
+        text="Directed by Jin"
+        startTime={DIRECTOR_START}
+        elapsed={elapsed}
+      />
+
+      {/* 3. THE MEDIA (3D Canvas) - Title 단계부터 표시 */}
+      {isTitleStage && (
+        <Canvas
+          camera={{
+            position: [0, 0, 8],
+            fov: 50,
+          }}
+        >
+          <TitleText hasEntered={true} isZooming={isZooming} />
+        </Canvas>
+      )}
+
+      {/* 4. WATCH 버튼 */}
       <div className="absolute bottom-32 left-1/2 -translate-x-1/2 z-10">
         <button
           onClick={handleStart}
-          className={`group px-12 py-3 border border-white/40 font-bebas text-white text-2xl tracking-[0.4em] transition-all duration-700 hover:border-white hover:bg-white/5 ${
-            hasEntered && !isZooming
-              ? "opacity-100"
-              : "opacity-0 pointer-events-none"
+          className={`group px-12 py-3 border border-white/40 font-bebas text-white text-2xl tracking-[0.4em] transition-all duration-1000 hover:border-white hover:bg-white/5 ${
+            isButtonStage ? "opacity-100" : "opacity-0 pointer-events-none"
           }`}
-          style={{
-            transitionDelay: hasEntered && !isZooming ? "2000ms" : "0ms",
-          }}
         >
           WATCH
         </button>
       </div>
 
-      {/* 마지막에 검은 화면으로 페이드 (zoom 끝날 때) */}
+      {/* 5. zoom 끝부분 검은 화면 페이드 */}
       <div
         className="absolute inset-0 bg-black pointer-events-none transition-opacity duration-1000"
         style={{
