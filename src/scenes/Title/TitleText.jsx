@@ -1,4 +1,4 @@
-import { Text } from "@react-three/drei";
+import { Text3D, Center } from "@react-three/drei";
 import { useFrame, useThree } from "@react-three/fiber";
 import { useRef, useState, useEffect } from "react";
 
@@ -7,6 +7,7 @@ export default function TitleText({ hasEntered, isZooming }) {
   const { camera } = useThree();
   const [opacity, setOpacity] = useState(0);
   const zoomStartTime = useRef(null);
+  const materialRef = useRef();
 
   // 진입 후 페이드인
   useEffect(() => {
@@ -40,48 +41,67 @@ export default function TitleText({ hasEntered, isZooming }) {
   useFrame((state) => {
     if (!groupRef.current) return;
 
+    // 머티리얼 opacity 업데이트
+    if (materialRef.current) {
+      materialRef.current.opacity = opacity;
+    }
+
     // 미세한 떠다니는 움직임 (zoom 중에는 멈춤)
     if (!isZooming) {
       groupRef.current.position.y =
-        Math.sin(state.clock.elapsedTime * 0.5) * 0.05;
+        Math.sin(state.clock.elapsedTime * 0.3) * 0.05;
     }
 
     // 카메라 zoom-in 애니메이션
     if (isZooming && zoomStartTime.current) {
-      const elapsed = (Date.now() - zoomStartTime.current) / 1000; // 초 단위
-      const duration = 3; // 3초 동안 zoom
-
-      // ease-in 효과 (천천히 시작, 빠르게 가속)
+      const elapsed = (Date.now() - zoomStartTime.current) / 1000;
+      const duration = 3;
       const t = Math.min(elapsed / duration, 1);
-      const eased = t * t * t; // cubic ease-in
+      const eased = t * t * t;
 
-      // 카메라 z: 8 → -3 (텍스트 z=0 통과)
       camera.position.z = 8 - eased * 11;
     }
   });
 
   return (
-    <group ref={groupRef}>
-      <Text
-        fontSize={1.2}
-        letterSpacing={0.08}
-        color="white"
-        anchorX="center"
-        anchorY="middle"
-        font="/fonts/BebasNeue-Regular.ttf"
-      >
-        THE MEDIA
-        <meshStandardMaterial
-          color="white"
-          transparent
-          opacity={opacity}
-          emissive="white"
-          emissiveIntensity={0.3}
-        />
-      </Text>
+    <>
+      {/* 라이팅 - 입체감을 살리기 위한 측면 조명 */}
+      <ambientLight intensity={0.4} />
+      <directionalLight position={[5, 3, 5]} intensity={0.8} />
+      <directionalLight
+        position={[-5, -3, 5]}
+        intensity={0.4}
+        color="#aabbff"
+      />
+      <pointLight position={[0, 0, 3]} intensity={0.5} />
 
-      <ambientLight intensity={0.5} />
-      <pointLight position={[0, 0, 5]} intensity={0.5} />
-    </group>
+      <group ref={groupRef}>
+        <Center>
+          <Text3D
+            font="/fonts/BebasNeue-Regular.json"
+            size={1.2}
+            height={0.3}
+            curveSegments={12}
+            bevelEnabled
+            bevelThickness={0.02}
+            bevelSize={0.015}
+            bevelSegments={5}
+            letterSpacing={0.05}
+          >
+            THE MEDIA
+            <meshStandardMaterial
+              ref={materialRef}
+              color="white"
+              metalness={0.4}
+              roughness={0.3}
+              emissive="white"
+              emissiveIntensity={0.15}
+              transparent
+              opacity={opacity}
+            />
+          </Text3D>
+        </Center>
+      </group>
+    </>
   );
 }

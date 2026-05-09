@@ -52,14 +52,14 @@ export default function Title() {
     <div className="relative w-screen h-screen bg-black overflow-hidden">
       {/* 1. Studio Intro (HTML) */}
       <IntroText
-        text="Eudaimonia Studios Present"
+        text="EUDAIMONIA Studios Present"
         startTime={STUDIO_START}
         elapsed={elapsed}
       />
 
       {/* 2. Director Intro (HTML) */}
       <IntroText
-        text="Directed by Jin"
+        text="DIRECTED BY JIN"
         startTime={DIRECTOR_START}
         elapsed={elapsed}
       />
