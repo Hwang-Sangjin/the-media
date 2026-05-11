@@ -4,16 +4,19 @@ import { useSceneStore, SCENES } from "../../store/sceneStore";
 import TitleText from "./TitleText";
 import IntroText from "./IntroText";
 
+import { EffectComposer, Bloom } from "@react-three/postprocessing";
+
 // 시퀀스 타이밍 (ms)
-const STUDIO_START = 1000; // 1초 후 Studio 등장
-const DIRECTOR_START = 6000; // 6초 후 Director 등장
-const TITLE_START = 11000; // 11초 후 THE MEDIA 등장
-const BUTTON_START = 14000; // 14초 후 WATCH 버튼 등장
+const STUDIO_START = 1000;
+const DIRECTOR_START = 6000;
+const TITLE_START = 11000;
+const BUTTON_START = 14000;
 
 export default function Title() {
   const [elapsed, setElapsed] = useState(0);
   const [isZooming, setIsZooming] = useState(false);
   const startTime = useRef(null);
+  const mouseRef = useRef({ x: 0, y: 0 });
   const goToScene = useSceneStore((state) => state.goToScene);
 
   // 경과 시간 추적
@@ -30,6 +33,17 @@ export default function Title() {
     return () => cancelAnimationFrame(rafId);
   }, []);
 
+  // 마우스 위치 추적 (-1 ~ 1 범위로 정규화)
+  useEffect(() => {
+    const handleMouseMove = (e) => {
+      mouseRef.current.x = (e.clientX / window.innerWidth) * 2 - 1;
+      mouseRef.current.y = -((e.clientY / window.innerHeight) * 2 - 1);
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    return () => window.removeEventListener("mousemove", handleMouseMove);
+  }, []);
+
   const handleStart = () => {
     if (isZooming) return;
     setIsZooming(true);
@@ -44,27 +58,25 @@ export default function Title() {
     return () => clearTimeout(timer);
   }, [isZooming]);
 
-  // 타이틀 단계 체크 (THE MEDIA 등장 시점인지)
   const isTitleStage = elapsed >= TITLE_START;
   const isButtonStage = elapsed >= BUTTON_START && !isZooming;
 
   return (
     <div className="relative w-screen h-screen bg-black overflow-hidden">
-      {/* 1. Studio Intro (HTML) */}
+      {/* 1. Studio Intro */}
       <IntroText
         text="EUDAIMONIA Studios Present"
         startTime={STUDIO_START}
         elapsed={elapsed}
       />
 
-      {/* 2. Director Intro (HTML) */}
+      {/* 2. Director Intro */}
       <IntroText
         text="DIRECTED BY JIN"
         startTime={DIRECTOR_START}
         elapsed={elapsed}
       />
 
-      {/* 3. THE MEDIA (3D Canvas) - Title 단계부터 표시 */}
       {isTitleStage && (
         <Canvas
           camera={{
@@ -72,7 +84,21 @@ export default function Title() {
             fov: 50,
           }}
         >
-          <TitleText hasEntered={true} isZooming={isZooming} />
+          <TitleText
+            hasEntered={true}
+            isZooming={isZooming}
+            mouseRef={mouseRef}
+          />
+
+          {/* Bloom 후처리 - 글로우 효과 */}
+          <EffectComposer>
+            <Bloom
+              intensity={0.1}
+              luminanceThreshold={0.6}
+              luminanceSmoothing={0.5}
+              mipmapBlur
+            />
+          </EffectComposer>
         </Canvas>
       )}
 
