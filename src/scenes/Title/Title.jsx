@@ -12,6 +12,32 @@ const DIRECTOR_START = 6000;
 const TITLE_START = 11000;
 const BUTTON_START = 14000;
 
+function WatchButton({ isVisible, onClick }) {
+  const assets3DProgress = useSceneStore((state) => state.assets3DProgress);
+  const assets3DLoaded = useSceneStore((state) => state.assets3DLoaded);
+
+  const isReady = isVisible && assets3DLoaded;
+  const progressPercent = Math.floor(assets3DProgress * 100);
+
+  return (
+    <div className="absolute bottom-32 left-1/2 -translate-x-1/2 z-10">
+      <button
+        onClick={isReady ? onClick : undefined}
+        disabled={!isReady}
+        className={`group px-12 py-3 border font-bebas text-2xl tracking-[0.4em] transition-all duration-1000 ${
+          isVisible ? "opacity-100" : "opacity-0 pointer-events-none"
+        } ${
+          isReady
+            ? "text-white border-white/40 hover:border-white hover:bg-white/5 cursor-pointer"
+            : "text-white/40 border-white/10 cursor-default"
+        }`}
+      >
+        {isReady ? "WATCH" : `LOADING ${progressPercent}%`}
+      </button>
+    </div>
+  );
+}
+
 export default function Title() {
   const [elapsed, setElapsed] = useState(0);
   const [isZooming, setIsZooming] = useState(false);
@@ -103,16 +129,10 @@ export default function Title() {
       )}
 
       {/* 4. WATCH 버튼 */}
-      <div className="absolute bottom-32 left-1/2 -translate-x-1/2 z-10">
-        <button
-          onClick={handleStart}
-          className={`group px-12 py-3 border border-white/40 font-bebas text-white text-2xl tracking-[0.4em] transition-all duration-1000 hover:border-white hover:bg-white/5 ${
-            isButtonStage ? "opacity-100" : "opacity-0 pointer-events-none"
-          }`}
-        >
-          WATCH
-        </button>
-      </div>
+      <WatchButton
+        isVisible={elapsed >= BUTTON_START && !isZooming}
+        onClick={handleStart}
+      />
 
       {/* 5. zoom 끝부분 검은 화면 페이드 */}
       <div

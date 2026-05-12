@@ -22,9 +22,18 @@ export const useSceneStore = create((set, get) => ({
   currentScene: SCENES.LOADING,
   isTransitioning: false,
   soundEnabled: false,
-
-  // 씬 내부 stage (씬 1: 'space' → 'tesseract', 씬 3: 'digit' → 'architect')
   stage: "main",
+
+  // 3D 에셋 로딩 상태
+  assets3DProgress: 0, // 0~1
+  assets3DLoaded: false,
+
+  set3DProgress: (progress) => {
+    set({
+      assets3DProgress: progress,
+      assets3DLoaded: progress >= 1,
+    });
+  },
 
   goToScene: (sceneId) => {
     const { currentScene, isTransitioning } = get();
@@ -33,14 +42,13 @@ export const useSceneStore = create((set, get) => ({
     set({ isTransitioning: true });
 
     setTimeout(() => {
-      set({ currentScene: sceneId, stage: "main" }); // 씬 변경 시 stage 리셋
+      set({ currentScene: sceneId, stage: "main" });
       setTimeout(() => {
         set({ isTransitioning: false });
       }, 400);
     }, 600);
   },
 
-  // 같은 씬 내에서 stage만 전환 (검은 화면 경유)
   goToStage: (newStage) => {
     const { stage, isTransitioning } = get();
     if (isTransitioning || stage === newStage) return;
@@ -49,7 +57,7 @@ export const useSceneStore = create((set, get) => ({
 
     setTimeout(() => {
       set({ stage: newStage });
-      window.scrollTo(0, 0); // 새 stage에서 스크롤 리셋
+      window.scrollTo(0, 0);
       setTimeout(() => {
         set({ isTransitioning: false });
       }, 400);

@@ -98,7 +98,6 @@ export default function TitleText({ hasEntered, isZooming, mouseRef }) {
       spotLightTargetRef.current.position.y +=
         (lightTargetY - spotLightTargetRef.current.position.y) * 0.08;
     }
-
     // 카메라 zoom-in 애니메이션
     if (isZooming && zoomStartTime.current) {
       const elapsed = (Date.now() - zoomStartTime.current) / 1000;
@@ -109,7 +108,19 @@ export default function TitleText({ hasEntered, isZooming, mouseRef }) {
       camera.position.z = 8 - eased * 11;
       camera.position.x += (0 - camera.position.x) * 0.1;
       camera.position.y += (0 - camera.position.y) * 0.1;
-      camera.lookAt(0, 0, 0);
+
+      // 텍스트 통과 전까지만 lookAt 유지
+      // (텍스트는 z=0 근처, 통과는 z < 0.5 정도부터)
+      if (camera.position.z > 0.5) {
+        camera.lookAt(0, 0, 0);
+      } else {
+        // 통과 후엔 정면(z- 방향)을 바라보게 고정
+        camera.lookAt(
+          camera.position.x,
+          camera.position.y,
+          camera.position.z - 1,
+        );
+      }
     }
   });
 

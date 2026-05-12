@@ -10,6 +10,7 @@ import Transition from "./components/Transition/Transition";
 import DotNavigation from "./components/Navigation/DotNavigation";
 import Header from "./components/Navigation/Header";
 import { useEffect } from "react"; // 추가
+import Preloader3D from "./components/Preloader3D/Preloader3D";
 
 function App() {
   const currentScene = useSceneStore((state) => state.currentScene);
@@ -44,6 +45,7 @@ function App() {
       <Header />
       <DotNavigation />
       <Transition />
+      <Preloader3D />
     </div>
   );
 }
