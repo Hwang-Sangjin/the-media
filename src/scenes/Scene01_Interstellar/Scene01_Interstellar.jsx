@@ -8,13 +8,28 @@ import Stars from "./Stars";
 import CameraController from "./CameraController";
 import Tesseract from "./Tesseract";
 
+// 페이드인 지속시간 (ms)
+const FADE_IN_DURATION = 4000;
+
 export default function Scene01_Interstellar() {
   const scrollProgress = useScrollProgress();
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
+  const [hasEntered, setHasEntered] = useState(false);
   const stage = useSceneStore((state) => state.stage);
   const goToStage = useSceneStore((state) => state.goToStage);
   const goToScene = useSceneStore((state) => state.goToScene);
   const isTransitioning = useSceneStore((state) => state.isTransitioning);
+
+  // 진입 페이드인 트리거
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      requestAnimationFrame(() => {
+        setHasEntered(true);
+      });
+    }, 500); // 0.5초 대기 후 페이드 시작
+
+    return () => clearTimeout(timer);
+  }, []);
 
   useEffect(() => {
     const handleMouseMove = (e) => {
@@ -43,32 +58,48 @@ export default function Scene01_Interstellar() {
   return (
     <>
       <div className="fixed inset-0 bg-black">
-        <Canvas
-          camera={{
-            position: [0, 0, 10],
-            fov: stage === "tesseract" ? 80 : 60,
+        {/* 3D 씬 (페이드인 적용) */}
+        <div
+          className="absolute inset-0 transition-opacity ease-in-out"
+          style={{
+            opacity: hasEntered ? 1 : 0,
+            transitionDuration: `${FADE_IN_DURATION}ms`,
           }}
         >
-          <ambientLight intensity={stage === "tesseract" ? 0.8 : 0.2} />
-          <pointLight position={[10, 10, 10]} intensity={1} />
+          <Canvas
+            camera={{
+              position: [0, 0, 10],
+              fov: stage === "tesseract" ? 80 : 60,
+            }}
+          >
+            <ambientLight intensity={stage === "tesseract" ? 0.8 : 0.2} />
+            <pointLight position={[10, 10, 10]} intensity={1} />
 
-          {stage === "main" && (
-            <>
-              <Stars />
-              <BlackHole />
-              <Spaceship mousePosition={mousePosition} />
-              <CameraController scrollProgress={scrollProgress} />
-            </>
-          )}
+            {stage === "main" && (
+              <>
+                <Stars />
+                <BlackHole />
+                <Spaceship mousePosition={mousePosition} />
+                <CameraController scrollProgress={scrollProgress} />
+              </>
+            )}
 
-          {stage === "tesseract" && (
-            <Tesseract scrollProgress={scrollProgress} />
-          )}
-        </Canvas>
+            {stage === "tesseract" && (
+              <Tesseract scrollProgress={scrollProgress} />
+            )}
+          </Canvas>
+        </div>
 
-        {/* 하단 텍스트 - main stage에서만 */}
+        {/* 하단 텍스트도 페이드인 (살짝 더 늦게) */}
         {stage === "main" && (
-          <div className="absolute bottom-16 left-0 right-0 text-center pointer-events-none z-10">
+          <div
+            className="absolute bottom-16 left-0 right-0 text-center pointer-events-none z-10 transition-opacity ease-in-out"
+            style={{
+              opacity: hasEntered ? 1 : 0,
+              transitionDuration: `${FADE_IN_DURATION}ms`,
+              transitionDelay: "1000ms", // 별이 먼저 등장한 후 텍스트
+            }}
+          >
             <h2 className="font-mono text-white text-2xl tracking-[0.3em] mb-2">
               SPACE INTO STORY
             </h2>
@@ -86,11 +117,18 @@ export default function Scene01_Interstellar() {
         )}
 
         {/* 스크롤 안내 */}
-        {stage === "main" && scrollProgress < 0.05 && (
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 translate-y-32 font-mono text-white/40 text-xs tracking-widest pointer-events-none animate-pulse">
+        {/* {stage === "main" && scrollProgress < 0.05 && hasEntered && (
+          <div
+            className="absolute top-1/2 left-1/2 -translate-x-1/2 translate-y-32 font-mono text-white/40 text-xs tracking-widest pointer-events-none animate-pulse transition-opacity ease-in-out"
+            style={{
+              opacity: hasEntered ? 1 : 0,
+              transitionDuration: "6000ms",
+              transitionDelay: "6000ms", // 가장 늦게 등장
+            }}
+          >
             ↓ SCROLL TO APPROACH
           </div>
-        )}
+        )} */}
       </div>
 
       {/* 보이지 않는 스크롤 영역 */}
