@@ -30,6 +30,7 @@ const FRAG_A = /* glsl */ `
   uniform vec4      iMouse;
   uniform sampler2D iChannel0;
   uniform sampler2D iChannel1;
+  uniform float     uBHScale;  // 블랙홀 크기 (1.0 = 기본, 2.0 = 2배 크게)
 
   in  vec2 vUv;
   out vec4 fragColor;
@@ -147,7 +148,8 @@ const FRAG_A = /* glsl */ `
     vec2  uv     = vUv;
     float aspect = iResolution.x / iResolution.y;
 
-    vec3 eyevec = normalize(vec3((uv*2.0-1.0)*vec2(aspect,1.0), 6.0));
+    // uBHScale 클수록 FOV 넓어져 블랙홀이 크게 보임
+    vec3 eyevec = normalize(vec3((uv*2.0-1.0)*vec2(aspect,1.0), 6.0 / uBHScale));
     vec3 eyepos = vec3(0.0, 0.0, -10.0);
 
     vec2 mp = iMouse.xy / iResolution.xy;
@@ -333,9 +335,10 @@ const FRAG_D = /* glsl */ `
 const FRAG_FINAL = /* glsl */ `
   precision highp float;
 
-  uniform sampler2D iChannel0;  // Buffer A
-  uniform sampler2D iChannel1;  // Buffer D (bloom)
+  uniform sampler2D iChannel0;      // Buffer A
+  uniform sampler2D iChannel1;      // Buffer D (bloom)
   uniform vec2      iResolution;
+  uniform float     uBloomStrength; // bloom 세기 (기본 0.08)
 
   in  vec2 vUv;
   out vec4 fragColor;
@@ -379,7 +382,7 @@ const FRAG_FINAL = /* glsl */ `
     vec2 uv    = vUv;
     vec3 color = texture(iChannel0, uv).rgb;   // Buffer A 원본
 
-    color += GetBloom(uv) * 0.08;              // Bloom 합산
+    color += GetBloom(uv) * uBloomStrength;    // Bloom 합산
     color *= 200.0;                            // 전체 밝기 부스트
 
     // Tonemapping & color grading (원본 Image 패스 동일)
@@ -455,6 +458,7 @@ export default function BlackHole() {
       iMouse: { value: new THREE.Vector4(0, 0, 0, 0) },
       iChannel0: { value: noiseTexture },
       iChannel1: { value: rockTexture },
+      uBHScale: { value: 1.0 }, // ← 여기서 조절 (0.5 = 절반, 2.0 = 2배)
     });
 
     const B = makePass(FRAG_B, {
@@ -481,6 +485,7 @@ export default function BlackHole() {
         iChannel0: { value: null },
         iChannel1: { value: null },
         iResolution: { value: new THREE.Vector2(w, h) },
+        uBloomStrength: { value: 0.08 }, // ← 여기서 조절 (원본: 0.08)
       },
       depthTest: false,
     });
