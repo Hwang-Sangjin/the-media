@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import { useTexture } from "@react-three/drei";
 import * as THREE from "three";
@@ -30,12 +30,13 @@ const FRAG_A = /* glsl */ `
   uniform vec4      iMouse;
   uniform sampler2D iChannel0;
   uniform sampler2D iChannel1;
-  uniform float     uBHScale;  // 블랙홀 크기 (1.0 = 기본, 2.0 = 2배 크게)
+  uniform float     uBHScale;    // 블랙홀 크기
+  uniform sampler2D iChannel2;   // 이전 프레임 (Temporal AA ping-pong)
 
   in  vec2 vUv;
   out vec4 fragColor;
 
-  #define ITERATIONS 50
+  #define ITERATIONS 150
   const vec3  MainColor = vec3(1.0);
   const float pi        = 3.14159265;
 
@@ -148,8 +149,12 @@ const FRAG_A = /* glsl */ `
     vec2  uv     = vUv;
     float aspect = iResolution.x / iResolution.y;
 
-    // uBHScale 클수록 FOV 넓어져 블랙홀이 크게 보임
-    vec3 eyevec = normalize(vec3((uv*2.0-1.0)*vec2(aspect,1.0), 6.0 / uBHScale));
+    // Temporal AA: 매 프레임 서브픽셀 지터 → 누적되면 매끄러워짐
+    vec2 uveye = uv;
+    uveye.x += rand(uv + sin(iTime)) / iResolution.x;
+    uveye.y += rand(uv + 1.0 + sin(iTime)) / iResolution.y;
+
+    vec3 eyevec = normalize(vec3((uveye*2.0-1.0)*vec2(aspect,1.0), 6.0 / uBHScale));
     vec3 eyepos = vec3(0.0, 0.0, -10.0);
 
     vec2 mp = iMouse.xy / iResolution.xy;
@@ -161,7 +166,8 @@ const FRAG_A = /* glsl */ `
     eyepos = rotate(eyepos, angle.x, angle.y, angle.z);
 
     vec3  color  = vec3(0.0);
-    float dither = rand(uv) * 2.0;
+    // 지터된 dither로 레이 시작점을 매 프레임 다르게
+    float dither = rand(uv + sin(iTime)) * 1.0;
     float alpha  = 0.0;
     vec3  raypos = eyepos + eyevec * dither * 15.0 / float(ITERATIONS);
 
@@ -175,6 +181,11 @@ const FRAG_A = /* glsl */ `
     }
 
     color *= 0.0001;
+
+    // Temporal AA: 이전 프레임과 블렌딩 (90% 이전 + 10% 현재)
+    vec3 previous = texture(iChannel2, uv).rgb;
+    color = mix(color, previous, 0.95);
+
     fragColor = vec4(sat3(color), 1.0);
   }
 `;
@@ -446,7 +457,8 @@ export default function BlackHole() {
     const h = size.height;
 
     // ── FBO ────────────────────────────────────
-    const fboA = makeFBO(w, h);
+    const fboA = makeFBO(w, h); // 현재 프레임 Buffer A 출력
+    const fboAPrev = makeFBO(w, h); // 이전 프레임 (Temporal AA용)
     const fboB = makeFBO(w, h);
     const fboC = makeFBO(w, h);
     const fboD = makeFBO(w, h);
@@ -458,7 +470,8 @@ export default function BlackHole() {
       iMouse: { value: new THREE.Vector4(0, 0, 0, 0) },
       iChannel0: { value: noiseTexture },
       iChannel1: { value: rockTexture },
-      uBHScale: { value: 1.0 }, // ← 여기서 조절 (0.5 = 절반, 2.0 = 2배)
+      iChannel2: { value: null }, // 이전 프레임 (매 프레임 교체)
+      uBHScale: { value: 1.0 },
     });
 
     const B = makePass(FRAG_B, {
@@ -493,24 +506,39 @@ export default function BlackHole() {
     // 오소 카메라 (풀스크린 쿼드용)
     const ortho = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
 
-    return { fboA, fboB, fboC, fboD, A, B, C, D, finalMat, ortho };
+    return { fboA, fboAPrev, fboB, fboC, fboD, A, B, C, D, finalMat, ortho };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [noiseTexture, rockTexture]);
 
+  // ping-pong 포인터 (매 프레임 write ↔ read 교체)
+  const pingPong = useRef(null);
+
   useFrame(({ clock }) => {
-    const { fboA, fboB, fboC, fboD, A, B, C, D, finalMat, ortho } = pipeline;
+    const { fboA, fboAPrev, fboB, fboC, fboD, A, B, C, D, finalMat, ortho } =
+      pipeline;
+
+    // 첫 프레임에 포인터 초기화
+    if (!pingPong.current) {
+      pingPong.current = { write: fboA, read: fboAPrev };
+    }
+
+    const { write, read } = pingPong.current;
     const t = clock.getElapsedTime();
     const w = size.width;
     const h = size.height;
 
-    // ── Buffer A: 레이마칭 → fboA ──────────────
+    // ── Buffer A: 레이마칭 → write FBO (1번만 렌더) ──
     A.mat.uniforms.iTime.value = t;
     A.mat.uniforms.iResolution.value.set(w, h);
-    gl.setRenderTarget(fboA);
+    A.mat.uniforms.iChannel2.value = read.texture; // 이전 프레임
+    gl.setRenderTarget(write);
     gl.render(A.scene, ortho);
 
+    // ── Ping-pong 스왑 (포인터만 교체, 재렌더 없음) ──
+    pingPong.current = { write: read, read: write };
+
     // ── Buffer B: Bloom mipmap → fboB ──────────
-    B.mat.uniforms.iChannel0.value = fboA.texture;
+    B.mat.uniforms.iChannel0.value = write.texture; // 현재 프레임
     B.mat.uniforms.iResolution.value.set(w, h);
     gl.setRenderTarget(fboB);
     gl.render(B.scene, ortho);
@@ -528,7 +556,7 @@ export default function BlackHole() {
     gl.render(D.scene, ortho);
 
     // ── 최종: 화면에 합성 출력 ─────────────────
-    finalMat.uniforms.iChannel0.value = fboA.texture;
+    finalMat.uniforms.iChannel0.value = write.texture; // Buffer A 현재 프레임
     finalMat.uniforms.iChannel1.value = fboD.texture;
     finalMat.uniforms.iResolution.value.set(w, h);
     gl.setRenderTarget(null);
