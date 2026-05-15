@@ -30,8 +30,9 @@ const FRAG_A = /* glsl */ `
   uniform vec4      iMouse;
   uniform sampler2D iChannel0;
   uniform sampler2D iChannel1;
-  uniform float     uBHScale;    // 블랙홀 크기
-  uniform sampler2D iChannel2;   // 이전 프레임 (Temporal AA ping-pong)
+  uniform float     uBHScale;
+  uniform sampler2D iChannel2;
+  uniform float     uBlendWeight;
 
   in  vec2 vUv;
   out vec4 fragColor;
@@ -149,7 +150,6 @@ const FRAG_A = /* glsl */ `
     vec2  uv     = vUv;
     float aspect = iResolution.x / iResolution.y;
 
-    // Temporal AA: 매 프레임 서브픽셀 지터 → 누적되면 매끄러워짐
     vec2 uveye = uv;
     uveye.x += rand(uv + sin(iTime)) / iResolution.x;
     uveye.y += rand(uv + 1.0 + sin(iTime)) / iResolution.y;
@@ -166,7 +166,6 @@ const FRAG_A = /* glsl */ `
     eyepos = rotate(eyepos, angle.x, angle.y, angle.z);
 
     vec3  color  = vec3(0.0);
-    // 지터된 dither로 레이 시작점을 매 프레임 다르게
     float dither = rand(uv + sin(iTime)) * 1.0;
     float alpha  = 0.0;
     vec3  raypos = eyepos + eyevec * dither * 15.0 / float(ITERATIONS);
@@ -182,17 +181,16 @@ const FRAG_A = /* glsl */ `
 
     color *= 0.0001;
 
-    // Temporal AA: 이전 프레임과 블렌딩 (90% 이전 + 10% 현재)
+    // Temporal AA: blendWeight 동적 조절
     vec3 previous = texture(iChannel2, uv).rgb;
-    color = mix(color, previous, 0.95);
+    color = mix(color, previous, uBlendWeight);
 
     fragColor = vec4(sat3(color), 1.0);
   }
 `;
 
 // ═══════════════════════════════════════════════════════════
-//  Buffer B — Bloom mipmap tree (1st bloom pass)
-//  iChannel0 = Buffer A 결과
+//  Buffer B — Bloom mipmap tree
 // ═══════════════════════════════════════════════════════════
 const FRAG_B = /* glsl */ `
   precision highp float;
@@ -207,7 +205,6 @@ const FRAG_B = /* glsl */ `
     return texture(iChannel0, coord).rgb;
   }
 
-  // octave 개수별 오버샘플링 (원본 동일)
   vec3 Grab1(vec2 coord, float octave, vec2 offset) {
     float scale = exp2(octave);
     coord = (coord + offset) * scale;
@@ -257,7 +254,6 @@ const FRAG_B = /* glsl */ `
 
 // ═══════════════════════════════════════════════════════════
 //  Buffer C — 수평 가우시안 블러
-//  iChannel0 = Buffer B 결과
 // ═══════════════════════════════════════════════════════════
 const FRAG_C = /* glsl */ `
   precision highp float;
@@ -281,7 +277,6 @@ const FRAG_C = /* glsl */ `
     weights[3] = 0.01037598; offsets[3] = 5.17647059;
     weights[4] = 0.00025940; offsets[4] = 7.05882353;
 
-    // 좌측 52% 영역만 블러 (mipmap tree 영역)
     if (uv.x < 0.52) {
       color     += texture(iChannel0, uv).rgb * weights[0];
       weightSum += weights[0];
@@ -299,7 +294,6 @@ const FRAG_C = /* glsl */ `
 
 // ═══════════════════════════════════════════════════════════
 //  Buffer D — 수직 가우시안 블러
-//  iChannel0 = Buffer C 결과
 // ═══════════════════════════════════════════════════════════
 const FRAG_D = /* glsl */ `
   precision highp float;
@@ -339,24 +333,21 @@ const FRAG_D = /* glsl */ `
 `;
 
 // ═══════════════════════════════════════════════════════════
-//  Image 패스 — 최종 합성 + 톤매핑 (Stage 5)
-//  iChannel0 = Buffer A (레이마칭 원본)
-//  iChannel1 = Buffer D (bloom 결과)
+//  Image 패스 — 최종 합성
 // ═══════════════════════════════════════════════════════════
 const FRAG_FINAL = /* glsl */ `
   precision highp float;
 
-  uniform sampler2D iChannel0;      // Buffer A
-  uniform sampler2D iChannel1;      // Buffer D (bloom)
+  uniform sampler2D iChannel0;
+  uniform sampler2D iChannel1;
   uniform vec2      iResolution;
-  uniform float     uBloomStrength; // bloom 세기 (기본 0.08)
+  uniform float     uBloomStrength;
 
   in  vec2 vUv;
   out vec4 fragColor;
 
   vec3 saturate3(vec3 x) { return clamp(x, vec3(0.0), vec3(1.0)); }
 
-  // Buffer D 에서 mipmap tree의 각 옥타브를 읽어 bloom 합산
   vec2 CalcOffset(float octave) {
     vec2 pad = vec2(10.0) / iResolution.xy;
     vec2 off = vec2(0.0);
@@ -368,9 +359,6 @@ const FRAG_FINAL = /* glsl */ `
 
   vec3 GrabBloom(vec2 coord, float octave, vec2 offset) {
     float scale = exp2(octave);
-    // ⚠️ 핵심: Buffer B의 역변환 (순방향 쓰면 밉맵 트리가 그대로 보임)
-    // Buffer B 쓰기: fboB[uv] = fboA[(uv + offset) * scale]
-    // Image 읽기:   bloom[uv] += fboD[uv / scale - offset]  ← 역변환
     vec2 tc = coord / scale - offset;
     if (tc.x<0.0||tc.x>1.0||tc.y<0.0||tc.y>1.0) return vec3(0.0);
     return texture(iChannel1, tc).rgb;
@@ -391,12 +379,11 @@ const FRAG_FINAL = /* glsl */ `
 
   void main() {
     vec2 uv    = vUv;
-    vec3 color = texture(iChannel0, uv).rgb;   // Buffer A 원본
+    vec3 color = texture(iChannel0, uv).rgb;
 
-    color += GetBloom(uv) * uBloomStrength;    // Bloom 합산
-    color *= 200.0;                            // 전체 밝기 부스트
+    color += GetBloom(uv) * uBloomStrength;
+    color *= 200.0;
 
-    // Tonemapping & color grading (원본 Image 패스 동일)
     color = pow(color, vec3(1.5));
     color = color / (1.0 + color);
     color = pow(color, vec3(1.0 / 1.5));
@@ -410,20 +397,17 @@ const FRAG_FINAL = /* glsl */ `
 `;
 
 // ═══════════════════════════════════════════════════════════
-//  유틸: FBO 생성
+//  유틸
 // ═══════════════════════════════════════════════════════════
 function makeFBO(w, h) {
   return new THREE.WebGLRenderTarget(w, h, {
     minFilter: THREE.LinearFilter,
     magFilter: THREE.LinearFilter,
     format: THREE.RGBAFormat,
-    type: THREE.HalfFloatType, // HDR 값 클램핑 방지
+    type: THREE.HalfFloatType,
   });
 }
 
-// ═══════════════════════════════════════════════════════════
-//  유틸: 오프스크린 씬 생성
-// ═══════════════════════════════════════════════════════════
 function makePass(fragShader, uniforms) {
   const mat = new THREE.RawShaderMaterial({
     glslVersion: THREE.GLSL3,
@@ -441,7 +425,11 @@ function makePass(fragShader, uniforms) {
 // ═══════════════════════════════════════════════════════════
 //  BlackHole 컴포넌트
 // ═══════════════════════════════════════════════════════════
-export default function BlackHole() {
+export default function BlackHole({
+  bhScale = 1.0,
+  bloomStrength = 0.08,
+  blendWeight = 0.95,
+}) {
   const { gl, size } = useThree();
 
   const [noiseTexture, rockTexture] = useTexture([
@@ -451,27 +439,25 @@ export default function BlackHole() {
   noiseTexture.wrapS = noiseTexture.wrapT = THREE.RepeatWrapping;
   rockTexture.wrapS = rockTexture.wrapT = THREE.RepeatWrapping;
 
-  // 씬, FBO, 머티리얼을 한 번만 생성
   const pipeline = useMemo(() => {
     const w = size.width;
     const h = size.height;
 
-    // ── FBO ────────────────────────────────────
-    const fboA = makeFBO(w, h); // 현재 프레임 Buffer A 출력
-    const fboAPrev = makeFBO(w, h); // 이전 프레임 (Temporal AA용)
+    const fboA = makeFBO(w, h);
+    const fboAPrev = makeFBO(w, h);
     const fboB = makeFBO(w, h);
     const fboC = makeFBO(w, h);
     const fboD = makeFBO(w, h);
 
-    // ── 각 패스 ────────────────────────────────
     const A = makePass(FRAG_A, {
       iTime: { value: 0 },
       iResolution: { value: new THREE.Vector2(w, h) },
       iMouse: { value: new THREE.Vector4(0, 0, 0, 0) },
       iChannel0: { value: noiseTexture },
       iChannel1: { value: rockTexture },
-      iChannel2: { value: null }, // 이전 프레임 (매 프레임 교체)
+      iChannel2: { value: null },
       uBHScale: { value: 1.0 },
+      uBlendWeight: { value: 0.95 },
     });
 
     const B = makePass(FRAG_B, {
@@ -489,7 +475,6 @@ export default function BlackHole() {
       iResolution: { value: new THREE.Vector2(w, h) },
     });
 
-    // ── 최종 합성 머티리얼 ─────────────────────
     const finalMat = new THREE.RawShaderMaterial({
       glslVersion: THREE.GLSL3,
       vertexShader: VERT,
@@ -498,26 +483,25 @@ export default function BlackHole() {
         iChannel0: { value: null },
         iChannel1: { value: null },
         iResolution: { value: new THREE.Vector2(w, h) },
-        uBloomStrength: { value: 0.08 }, // ← 여기서 조절 (원본: 0.08)
+        uBloomStrength: { value: 0.08 },
       },
       depthTest: false,
+      depthWrite: false,
+      transparent: false,
     });
 
-    // 오소 카메라 (풀스크린 쿼드용)
     const ortho = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
 
     return { fboA, fboAPrev, fboB, fboC, fboD, A, B, C, D, finalMat, ortho };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [noiseTexture, rockTexture]);
 
-  // ping-pong 포인터 (매 프레임 write ↔ read 교체)
   const pingPong = useRef(null);
 
   useFrame(({ clock }) => {
     const { fboA, fboAPrev, fboB, fboC, fboD, A, B, C, D, finalMat, ortho } =
       pipeline;
 
-    // 첫 프레임에 포인터 초기화
     if (!pingPong.current) {
       pingPong.current = { write: fboA, read: fboAPrev };
     }
@@ -527,44 +511,45 @@ export default function BlackHole() {
     const w = size.width;
     const h = size.height;
 
-    // ── Buffer A: 레이마칭 → write FBO (1번만 렌더) ──
+    // Buffer A
     A.mat.uniforms.iTime.value = t;
     A.mat.uniforms.iResolution.value.set(w, h);
-    A.mat.uniforms.iChannel2.value = read.texture; // 이전 프레임
+    A.mat.uniforms.iChannel2.value = read.texture;
+    A.mat.uniforms.uBHScale.value = bhScale;
+    A.mat.uniforms.uBlendWeight.value = blendWeight;
     gl.setRenderTarget(write);
     gl.render(A.scene, ortho);
 
-    // ── Ping-pong 스왑 (포인터만 교체, 재렌더 없음) ──
     pingPong.current = { write: read, read: write };
 
-    // ── Buffer B: Bloom mipmap → fboB ──────────
-    B.mat.uniforms.iChannel0.value = write.texture; // 현재 프레임
+    // Buffer B
+    B.mat.uniforms.iChannel0.value = write.texture;
     B.mat.uniforms.iResolution.value.set(w, h);
     gl.setRenderTarget(fboB);
     gl.render(B.scene, ortho);
 
-    // ── Buffer C: 수평 블러 → fboC ─────────────
+    // Buffer C
     C.mat.uniforms.iChannel0.value = fboB.texture;
     C.mat.uniforms.iResolution.value.set(w, h);
     gl.setRenderTarget(fboC);
     gl.render(C.scene, ortho);
 
-    // ── Buffer D: 수직 블러 → fboD ─────────────
+    // Buffer D
     D.mat.uniforms.iChannel0.value = fboC.texture;
     D.mat.uniforms.iResolution.value.set(w, h);
     gl.setRenderTarget(fboD);
     gl.render(D.scene, ortho);
 
-    // ── 최종: 화면에 합성 출력 ─────────────────
-    finalMat.uniforms.iChannel0.value = write.texture; // Buffer A 현재 프레임
+    // 최종
+    finalMat.uniforms.iChannel0.value = write.texture;
     finalMat.uniforms.iChannel1.value = fboD.texture;
     finalMat.uniforms.iResolution.value.set(w, h);
+    finalMat.uniforms.uBloomStrength.value = bloomStrength;
     gl.setRenderTarget(null);
-    // R3F 가 아래 <mesh>를 normal render loop 으로 그림
   });
 
   return (
-    <mesh>
+    <mesh renderOrder={9999} frustumCulled={false}>
       <planeGeometry args={[2, 2]} />
       <primitive object={pipeline.finalMat} attach="material" />
     </mesh>
