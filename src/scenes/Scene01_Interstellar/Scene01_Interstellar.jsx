@@ -1,5 +1,5 @@
 import { Canvas, useFrame } from "@react-three/fiber";
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { useScrollProgress } from "../../hooks/useScrollProgress";
 import { useSceneStore, SCENES } from "../../store/sceneStore";
 import BlackHole from "./BlackHole";
@@ -11,25 +11,45 @@ import SceneAudio from "./SceneAudio";
 //  타이밍 상수
 // ═════════════════════════════════════════════
 const FADE_IN_DURATION = 4000;
-const STAGE1_DURATION = 6000; // 검은 화면 유지
-const STAGE2_DURATION = 16000; // Zoom out 시간 (intro 내부)
-const INTRO_TOTAL = STAGE1_DURATION + STAGE2_DURATION; // intro 끝나는 시점
+const STAGE1_DURATION = 6000;
+const STAGE2_DURATION = 16000;
+const INTRO_TOTAL = STAGE1_DURATION + STAGE2_DURATION;
+
+const OUTRO_DURATION = 8000; // ← outro 시간 기반 zoom in (8초)
 
 // 카메라 z
-const CAMERA_Z_START = 1.5; // Intro 시작
-const CAMERA_Z_DEFAULT = 10; // Default 위치
-const CAMERA_Z_END = 0.3; // Outro 끝 (블랙홀에 빨려들어감)
+const CAMERA_Z_START = 1.5;
+const CAMERA_Z_DEFAULT = 10;
+const CAMERA_Z_END = 0.3;
 
 // 블랙홀 파라미터
 const BH_SCALE_START = 0.1;
 const BH_SCALE_DEFAULT = 1.0;
-const BH_SCALE_END = 0.1; // Outro 끝에서 다시 작아짐
+const BH_SCALE_END = 0.1;
 const BLOOM_START = 0.0;
 const BLOOM_DEFAULT = 0.08;
 
 // Temporal AA blend weight
 const BLEND_WEIGHT_STATIC = 0.95;
 const BLEND_WEIGHT_MOVING = 0.5;
+
+// ═════════════════════════════════════════════
+//  Narration
+// ═════════════════════════════════════════════
+const NARRATION_LINES = [
+  "Do not go gentle into that good night,",
+  "Old age should burn and rave at close of day;",
+  "Rage, rage against the dying of the light.",
+  "Though wise men at their end know dark is right,",
+  "Because their words had forked no lightning they",
+  "Do not go gentle into that good night.",
+  "Rage, rage against the dying of the light.",
+];
+
+const TYPE_SPEED = 60;
+const LINE_HOLD = 1000;
+const FADE_OUT_DURATION = 800;
+const FINAL_HOLD = 2000;
 
 // ═════════════════════════════════════════════
 //  Easing
@@ -39,19 +59,21 @@ function easeInOutCubic(t) {
 }
 
 // ═════════════════════════════════════════════
-//  Stage Controller — Phase 별 애니메이션 제어
+//  Stage Controller — Phase 별 시간 기반 애니메이션
 // ═════════════════════════════════════════════
 function StageController({
   phase,
-  scrollProgress,
   bhScaleRef,
   bloomRef,
   blendWeightRef,
   onIntroComplete,
+  onOutroComplete,
 }) {
   const introStartTime = useRef(null);
+  const outroStartTime = useRef(null);
   const prevBhScale = useRef(BH_SCALE_START);
   const introCompleteFired = useRef(false);
+  const outroCompleteFired = useRef(false);
 
   useFrame(({ camera }) => {
     let cameraZ = CAMERA_Z_DEFAULT;
@@ -72,7 +94,6 @@ function StageController({
         progress = easeInOutCubic(t);
       } else {
         progress = 1;
-        // intro 완료 신호 (한 번만)
         if (!introCompleteFired.current) {
           introCompleteFired.current = true;
           onIntroComplete();
@@ -87,21 +108,36 @@ function StageController({
       const bloomEased = easeInOutCubic(bloomProgress);
       newBloom = BLOOM_START + (BLOOM_DEFAULT - BLOOM_START) * bloomEased;
     } else if (phase === "default") {
-      // 정적 - 기본값 유지
       cameraZ = CAMERA_Z_DEFAULT;
       newBhScale = BH_SCALE_DEFAULT;
       newBloom = BLOOM_DEFAULT;
     } else if (phase === "outro") {
-      // 스크롤 기반 zoom in
-      const p = easeInOutCubic(scrollProgress);
-      cameraZ = CAMERA_Z_DEFAULT + (CAMERA_Z_END - CAMERA_Z_DEFAULT) * p;
-      newBhScale = BH_SCALE_DEFAULT + (BH_SCALE_END - BH_SCALE_DEFAULT) * p;
-      newBloom = BLOOM_DEFAULT * (1 - p); // 페이드아웃
+      // 시간 기반 zoom in (intro 와 같은 방식)
+      if (outroStartTime.current === null) {
+        outroStartTime.current = Date.now();
+      }
+      const elapsed = Date.now() - outroStartTime.current;
+
+      let progress = 0;
+      if (elapsed < OUTRO_DURATION) {
+        progress = easeInOutCubic(elapsed / OUTRO_DURATION);
+      } else {
+        progress = 1;
+        if (!outroCompleteFired.current) {
+          outroCompleteFired.current = true;
+          onOutroComplete();
+        }
+      }
+
+      cameraZ = CAMERA_Z_DEFAULT + (CAMERA_Z_END - CAMERA_Z_DEFAULT) * progress;
+      newBhScale =
+        BH_SCALE_DEFAULT + (BH_SCALE_END - BH_SCALE_DEFAULT) * progress;
+      newBloom = BLOOM_DEFAULT * (1 - progress);
     }
 
     camera.position.z = cameraZ;
 
-    // blendWeight 동적 조정
+    // blendWeight — intro / outro 시간 기반이라 매 프레임 일정한 delta
     const delta = Math.abs(newBhScale - prevBhScale.current);
     if (delta > 0.0001) {
       blendWeightRef.current = BLEND_WEIGHT_MOVING;
@@ -143,35 +179,83 @@ function BlackHoleAnimated({ bhScaleRef, bloomRef, blendWeightRef }) {
 }
 
 // ═════════════════════════════════════════════
-//  Narration — 좌측 하단 텍스트 영역 (자리만 잡아둠)
+//  Narration
 // ═════════════════════════════════════════════
 function Narration({ active, onComplete }) {
-  // TODO: 추후 텍스트 시퀀스 + 타이프라이터 애니메이션 구현
-  // 지금은 placeholder
+  const [currentLineIndex, setCurrentLineIndex] = useState(0);
+  const [typedText, setTypedText] = useState("");
+  const [isFadingOut, setIsFadingOut] = useState(false);
+
+  const onCompleteRef = useRef(onComplete);
+  onCompleteRef.current = onComplete;
 
   useEffect(() => {
     if (!active) return;
-    // 임시: 5초 후 완료 신호 (실제로는 모든 텍스트 표시 끝나는 시점)
-    const timer = setTimeout(() => {
-      onComplete();
-    }, 5000);
-    return () => clearTimeout(timer);
-  }, [active, onComplete]);
+    if (currentLineIndex >= NARRATION_LINES.length) return;
+
+    const line = NARRATION_LINES[currentLineIndex];
+    let charIndex = 0;
+    let typeTimer = null;
+    let holdTimer = null;
+    let fadeTimer = null;
+
+    const typeNext = () => {
+      if (charIndex <= line.length) {
+        setTypedText(line.slice(0, charIndex));
+        charIndex++;
+        typeTimer = setTimeout(typeNext, TYPE_SPEED);
+      } else {
+        const isLast = currentLineIndex === NARRATION_LINES.length - 1;
+        const hold = isLast ? FINAL_HOLD : LINE_HOLD;
+
+        holdTimer = setTimeout(() => {
+          setIsFadingOut(true);
+
+          fadeTimer = setTimeout(() => {
+            if (isLast) {
+              onCompleteRef.current();
+            } else {
+              setTypedText("");
+              setIsFadingOut(false);
+              setCurrentLineIndex((prev) => prev + 1);
+            }
+          }, FADE_OUT_DURATION);
+        }, hold);
+      }
+    };
+
+    typeNext();
+
+    return () => {
+      clearTimeout(typeTimer);
+      clearTimeout(holdTimer);
+      clearTimeout(fadeTimer);
+    };
+  }, [active, currentLineIndex]);
+
+  if (!active) return null;
 
   return (
-    <div
-      className="absolute bottom-16 left-16 max-w-md pointer-events-none z-10 transition-opacity duration-1000"
-      style={{ opacity: active ? 1 : 0 }}
-    >
-      <p className="font-mono text-white text-base leading-relaxed">
-        [Narration text placeholder]
+    <div className="absolute bottom-16 left-16 max-w-2xl pointer-events-none z-10">
+      <p
+        className="font-serif text-white text-2xl leading-relaxed italic transition-opacity"
+        style={{
+          opacity: isFadingOut ? 0 : 1,
+          transitionDuration: `${FADE_OUT_DURATION}ms`,
+        }}
+      >
+        {typedText}
+        {typedText.length < NARRATION_LINES[currentLineIndex]?.length &&
+          !isFadingOut && (
+            <span className="inline-block w-[2px] h-[1em] bg-white ml-1 align-middle animate-pulse" />
+          )}
       </p>
     </div>
   );
 }
 
 // ═════════════════════════════════════════════
-//  Scroll Hint — 내레이션 끝난 후 표시
+//  Scroll Hint
 // ═════════════════════════════════════════════
 function ScrollHint({ show }) {
   return (
@@ -192,7 +276,6 @@ export default function Scene01_Interstellar() {
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
   const [hasEntered, setHasEntered] = useState(false);
 
-  // Phase 상태
   const [phase, setPhase] = useState("intro");
   const [narrationComplete, setNarrationComplete] = useState(false);
 
@@ -201,12 +284,10 @@ export default function Scene01_Interstellar() {
   const goToScene = useSceneStore((state) => state.goToScene);
   const isTransitioning = useSceneStore((state) => state.isTransitioning);
 
-  // 셰이더 파라미터 ref
   const bhScaleRef = useRef(BH_SCALE_START);
   const bloomRef = useRef(BLOOM_START);
   const blendWeightRef = useRef(BLEND_WEIGHT_STATIC);
 
-  // 진입 페이드인
   useEffect(() => {
     const timer = setTimeout(() => {
       requestAnimationFrame(() => setHasEntered(true));
@@ -214,7 +295,6 @@ export default function Scene01_Interstellar() {
     return () => clearTimeout(timer);
   }, []);
 
-  // 마우스 추적
   useEffect(() => {
     const handleMouseMove = (e) => {
       const x = (e.clientX / window.innerWidth) * 2 - 1;
@@ -225,29 +305,32 @@ export default function Scene01_Interstellar() {
     return () => window.removeEventListener("mousemove", handleMouseMove);
   }, []);
 
-  // ════ Phase 전환 로직 ════
-
   // intro → default
-  const handleIntroComplete = () => {
+  const handleIntroComplete = useCallback(() => {
     setPhase("default");
-  };
+  }, []);
 
-  // default → outro (내레이션 끝 + 스크롤 시작)
+  const handleNarrationComplete = useCallback(() => {
+    setNarrationComplete(true);
+  }, []);
+
+  // outro 끝나면 tesseract 로
+  const handleOutroComplete = useCallback(() => {
+    if (!isTransitioning) {
+      goToStage("tesseract");
+    }
+  }, [goToStage, isTransitioning]);
+
+  // default → outro (내레이션 끝 + 스크롤 시작 = 트리거)
   useEffect(() => {
     if (phase !== "default") return;
     if (!narrationComplete) return;
     if (rawScrollProgress > 0.001) {
       setPhase("outro");
+      // 스크롤은 트리거로만 사용 → outro 진입 즉시 스크롤 위치 초기화
+      window.scrollTo(0, 0);
     }
   }, [phase, narrationComplete, rawScrollProgress]);
-
-  // outro → tesseract stage (글로벌)
-  useEffect(() => {
-    if (phase !== "outro") return;
-    if (rawScrollProgress >= 0.95 && !isTransitioning) {
-      goToStage("tesseract");
-    }
-  }, [phase, rawScrollProgress, isTransitioning, goToStage]);
 
   // tesseract → scene 2 (글로벌)
   useEffect(() => {
@@ -259,12 +342,6 @@ export default function Scene01_Interstellar() {
       goToScene(SCENES.SCENE_02);
     }
   }, [stage, rawScrollProgress, isTransitioning, goToScene]);
-
-  // ════ 스크롤 제어 ════
-  // phase 가 outro 가 아닐 때는 scrollProgress 를 outro 진행도로 변환하지 않음
-  // outro 일 때만 scroll → camera 진행도로 사용
-  // (Stage Controller 에 그대로 rawScrollProgress 넘김. outro 진입 시점부터 0~1 로 다시 계산하려면 별도 처리 필요)
-  // 일단 단순하게 rawScrollProgress 그대로 사용
 
   return (
     <>
@@ -298,11 +375,11 @@ export default function Scene01_Interstellar() {
                 <Spaceship mousePosition={mousePosition} />
                 <StageController
                   phase={phase}
-                  scrollProgress={rawScrollProgress}
                   bhScaleRef={bhScaleRef}
                   bloomRef={bloomRef}
                   blendWeightRef={blendWeightRef}
                   onIntroComplete={handleIntroComplete}
+                  onOutroComplete={handleOutroComplete}
                 />
               </>
             )}
@@ -313,20 +390,14 @@ export default function Scene01_Interstellar() {
           </Canvas>
         </div>
 
-        {/* Default Phase — 내레이션 */}
         {stage === "main" && phase === "default" && (
-          <Narration
-            active={true}
-            onComplete={() => setNarrationComplete(true)}
-          />
+          <Narration active={true} onComplete={handleNarrationComplete} />
         )}
 
-        {/* Default Phase 끝 — 스크롤 안내 */}
         {stage === "main" && phase === "default" && (
           <ScrollHint show={narrationComplete} />
         )}
 
-        {/* Tesseract 안내 */}
         {stage === "tesseract" && (
           <div className="absolute top-8 left-1/2 -translate-x-1/2 font-mono text-white/40 text-xs tracking-widest pointer-events-none">
             TESSERACT — KEEP SCROLLING
@@ -334,15 +405,14 @@ export default function Scene01_Interstellar() {
         )}
       </div>
 
-      {/* 스크롤 영역 — default 에서는 막혀있고 outro 에서만 활성 */}
-      {/* 내레이션 끝나기 전엔 스크롤 비활성화 */}
+      {/* 스크롤 영역 — default 일 때만 활성. outro 진입하면 시간 기반이라 스크롤 불필요 */}
       <div
         className="relative"
         style={{
           height:
-            phase === "intro" || (phase === "default" && !narrationComplete)
-              ? "100vh" // 스크롤 불가능
-              : "300vh", // 스크롤 가능
+            phase === "default" && narrationComplete
+              ? "300vh" // 스크롤 가능 (트리거 역할)
+              : "100vh", // 스크롤 비활성화 (intro, narration 중, outro)
         }}
       />
     </>
