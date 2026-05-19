@@ -8,14 +8,24 @@ import Tesseract from "./Tesseract";
 import SceneAudio from "./SceneAudio";
 
 // ═════════════════════════════════════════════
-//  타이밍 상수
+//  진입 / 종료 오버레이 타이밍
 // ═════════════════════════════════════════════
-const FADE_IN_DURATION = 4000;
+const INTRO_OVERLAY_DELAY = 500;
+const INTRO_OVERLAY_DURATION = 8000;
+
+// 종료 오버레이 — outro 후반부에 검은 막이 다시 덮임
+const OUTRO_OVERLAY_DELAY = 4000;
+const OUTRO_OVERLAY_DURATION = 4000;
+const OUTRO_OVERLAY_FADE_OUT_DURATION = 2000; // tesseract 진입 시 검은 막 걷힘
+
+// ═════════════════════════════════════════════
+//  Phase 타이밍 상수
+// ═════════════════════════════════════════════
 const STAGE1_DURATION = 6000;
 const STAGE2_DURATION = 16000;
 const INTRO_TOTAL = STAGE1_DURATION + STAGE2_DURATION;
 
-const OUTRO_DURATION = 8000; // outro 시간 기반 zoom in
+const OUTRO_DURATION = 8000;
 
 // 카메라 z
 const CAMERA_Z_START = 1.5;
@@ -34,7 +44,7 @@ const BLEND_WEIGHT_STATIC = 0.95;
 const BLEND_WEIGHT_MOVING = 0.5;
 
 // ═════════════════════════════════════════════
-//  Narration — 음악 큐포인트 기반
+//  Narration
 // ═════════════════════════════════════════════
 const NARRATION_LINES = [
   { time: 3, text: "Do not go gentle into that good night," },
@@ -58,7 +68,7 @@ function easeInOutCubic(t) {
 }
 
 // ═════════════════════════════════════════════
-//  Stage Controller — Phase 별 시간 기반 애니메이션
+//  Stage Controller
 // ═════════════════════════════════════════════
 function StageController({
   phase,
@@ -111,7 +121,6 @@ function StageController({
       newBhScale = BH_SCALE_DEFAULT;
       newBloom = BLOOM_DEFAULT;
     } else if (phase === "outro") {
-      // 시간 기반 zoom in (intro 와 같은 방식)
       if (outroStartTime.current === null) {
         outroStartTime.current = Date.now();
       }
@@ -136,7 +145,6 @@ function StageController({
 
     camera.position.z = cameraZ;
 
-    // blendWeight 동적 조정
     const delta = Math.abs(newBhScale - prevBhScale.current);
     if (delta > 0.0001) {
       blendWeightRef.current = BLEND_WEIGHT_MOVING;
@@ -178,7 +186,7 @@ function BlackHoleAnimated({ bhScaleRef, bloomRef, blendWeightRef }) {
 }
 
 // ═════════════════════════════════════════════
-//  Narration — 음악 큐포인트와 동기화
+//  Narration
 // ═════════════════════════════════════════════
 function Narration({ active, onComplete }) {
   const [currentLineIndex, setCurrentLineIndex] = useState(-1);
@@ -206,7 +214,6 @@ function Narration({ active, onComplete }) {
       const elapsed = Date.now() - startTimeRef.current;
       const elapsedSec = elapsed / 1000;
 
-      // 큐포인트 도달 체크
       NARRATION_LINES.forEach((line, index) => {
         if (elapsedSec >= line.time && !triggeredLinesRef.current.has(index)) {
           triggeredLinesRef.current.add(index);
@@ -214,7 +221,6 @@ function Narration({ active, onComplete }) {
         }
       });
 
-      // 끝에 가까워지면 마지막 페이드아웃 + 완료
       if (
         elapsed >= NARRATION_TOTAL_DURATION - FADE_OUT_DURATION &&
         !completeFiredRef.current
@@ -317,7 +323,14 @@ function ScrollHint({ show }) {
 export default function Scene01_Interstellar() {
   const rawScrollProgress = useScrollProgress();
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
-  const [hasEntered, setHasEntered] = useState(false);
+
+  // 진입 검은 오버레이
+  const [overlayOpacity, setOverlayOpacity] = useState(1);
+  const [overlayMounted, setOverlayMounted] = useState(true);
+
+  // 종료 검은 오버레이
+  const [outroOverlayOpacity, setOutroOverlayOpacity] = useState(0);
+  const [outroOverlayMounted, setOutroOverlayMounted] = useState(false);
 
   const [phase, setPhase] = useState("intro");
   const [narrationComplete, setNarrationComplete] = useState(false);
@@ -331,13 +344,25 @@ export default function Scene01_Interstellar() {
   const bloomRef = useRef(BLOOM_START);
   const blendWeightRef = useRef(BLEND_WEIGHT_STATIC);
 
+  // 진입 오버레이 페이드아웃
   useEffect(() => {
-    const timer = setTimeout(() => {
-      requestAnimationFrame(() => setHasEntered(true));
-    }, 500);
-    return () => clearTimeout(timer);
+    const fadeStartTimer = setTimeout(() => {
+      requestAnimationFrame(() => {
+        setOverlayOpacity(0);
+      });
+    }, INTRO_OVERLAY_DELAY);
+
+    const unmountTimer = setTimeout(() => {
+      setOverlayMounted(false);
+    }, INTRO_OVERLAY_DELAY + INTRO_OVERLAY_DURATION);
+
+    return () => {
+      clearTimeout(fadeStartTimer);
+      clearTimeout(unmountTimer);
+    };
   }, []);
 
+  // 마우스 추적
   useEffect(() => {
     const handleMouseMove = (e) => {
       const x = (e.clientX / window.innerWidth) * 2 - 1;
@@ -348,7 +373,6 @@ export default function Scene01_Interstellar() {
     return () => window.removeEventListener("mousemove", handleMouseMove);
   }, []);
 
-  // intro → default
   const handleIntroComplete = useCallback(() => {
     setPhase("default");
   }, []);
@@ -363,7 +387,7 @@ export default function Scene01_Interstellar() {
     }
   }, [goToStage, isTransitioning]);
 
-  // default → outro (내레이션 끝 + 스크롤 시작 = 트리거)
+  // default → outro
   useEffect(() => {
     if (phase !== "default") return;
     if (!narrationComplete) return;
@@ -372,6 +396,44 @@ export default function Scene01_Interstellar() {
       window.scrollTo(0, 0);
     }
   }, [phase, narrationComplete, rawScrollProgress]);
+
+  // outro 시작 → 종료 오버레이 페이드인 트리거
+  useEffect(() => {
+    if (phase !== "outro") return;
+
+    setOutroOverlayMounted(true);
+
+    const fadeInTimer = setTimeout(() => {
+      requestAnimationFrame(() => {
+        setOutroOverlayOpacity(1);
+      });
+    }, OUTRO_OVERLAY_DELAY);
+
+    return () => {
+      clearTimeout(fadeInTimer);
+    };
+  }, [phase]);
+
+  // tesseract 진입 → 종료 오버레이 페이드아웃 (검은 막 걷힘)
+  useEffect(() => {
+    if (stage !== "tesseract") return;
+    if (!outroOverlayMounted) return;
+
+    const fadeOutTimer = setTimeout(() => {
+      requestAnimationFrame(() => {
+        setOutroOverlayOpacity(0);
+      });
+    }, 100);
+
+    const unmountTimer = setTimeout(() => {
+      setOutroOverlayMounted(false);
+    }, 100 + OUTRO_OVERLAY_FADE_OUT_DURATION);
+
+    return () => {
+      clearTimeout(fadeOutTimer);
+      clearTimeout(unmountTimer);
+    };
+  }, [stage, outroOverlayMounted]);
 
   // tesseract → scene 2
   useEffect(() => {
@@ -386,29 +448,21 @@ export default function Scene01_Interstellar() {
 
   return (
     <>
-      {/* 인트로 음악 — intro phase 동안만 */}
       {stage === "main" && phase === "intro" && (
         <SceneAudio src="/audio/scene01-intro.mp3" volume={0.7} />
       )}
 
-      {/* 내레이션 음악 — default phase + 내레이션 진행 중 */}
       {stage === "main" && phase === "default" && !narrationComplete && (
         <SceneAudio src="/audio/scene01-narration.mp3" volume={0.7} />
       )}
 
-      {/* 분위기 음악 — 내레이션 끝난 후 default phase 동안 */}
       {stage === "main" && phase === "default" && narrationComplete && (
         <SceneAudio src="/audio/scene01-default.mp3" volume={0.7} />
       )}
 
       <div className="fixed inset-0 bg-black">
-        <div
-          className="absolute inset-0 transition-opacity ease-in-out"
-          style={{
-            opacity: hasEntered ? 1 : 0,
-            transitionDuration: `${FADE_IN_DURATION}ms`,
-          }}
-        >
+        {/* 3D Canvas */}
+        <div className="absolute inset-0">
           <Canvas
             camera={{
               position: [0, 0, CAMERA_Z_START],
@@ -443,17 +497,40 @@ export default function Scene01_Interstellar() {
           </Canvas>
         </div>
 
-        {/* Default Phase — 내레이션 */}
+        {/* 진입 검은 오버레이 */}
+        {overlayMounted && (
+          <div
+            className="absolute inset-0 bg-black pointer-events-none"
+            style={{
+              opacity: overlayOpacity,
+              transition: `opacity ${INTRO_OVERLAY_DURATION}ms ease-out`,
+            }}
+          />
+        )}
+
+        {/* 종료 검은 오버레이 — outro 후반부에 검은 막 덮임, tesseract 진입 시 다시 걷힘 */}
+        {outroOverlayMounted && (
+          <div
+            className="absolute inset-0 bg-black pointer-events-none"
+            style={{
+              opacity: outroOverlayOpacity,
+              transition: `opacity ${
+                stage === "tesseract"
+                  ? OUTRO_OVERLAY_FADE_OUT_DURATION
+                  : OUTRO_OVERLAY_DURATION
+              }ms ${stage === "tesseract" ? "ease-out" : "ease-in"}`,
+            }}
+          />
+        )}
+
         {stage === "main" && phase === "default" && (
           <Narration active={true} onComplete={handleNarrationComplete} />
         )}
 
-        {/* 스크롤 안내 */}
         {stage === "main" && phase === "default" && (
           <ScrollHint show={narrationComplete} />
         )}
 
-        {/* Tesseract 안내 */}
         {stage === "tesseract" && (
           <div className="absolute top-8 left-1/2 -translate-x-1/2 font-mono text-white/40 text-xs tracking-widest pointer-events-none">
             TESSERACT — KEEP SCROLLING
@@ -461,7 +538,6 @@ export default function Scene01_Interstellar() {
         )}
       </div>
 
-      {/* 스크롤 영역 */}
       <div
         className="relative"
         style={{
