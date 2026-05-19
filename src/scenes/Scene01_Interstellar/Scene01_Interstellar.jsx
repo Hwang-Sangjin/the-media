@@ -21,8 +21,8 @@ const OUTRO_OVERLAY_FADE_OUT_DURATION = 2000; // tesseract 진입 시 검은 막
 // ═════════════════════════════════════════════
 //  Phase 타이밍 상수
 // ═════════════════════════════════════════════
-const STAGE1_DURATION = 6000;
-const STAGE2_DURATION = 16000;
+const STAGE1_DURATION = 4000;
+const STAGE2_DURATION = 14000;
 const INTRO_TOTAL = STAGE1_DURATION + STAGE2_DURATION;
 
 const OUTRO_DURATION = 8000;
