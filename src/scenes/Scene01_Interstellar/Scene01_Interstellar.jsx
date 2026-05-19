@@ -280,9 +280,9 @@ function Narration({ active, onComplete }) {
   const currentLine = NARRATION_LINES[currentLineIndex]?.text || "";
 
   return (
-    <div className="absolute bottom-16 left-16 max-w-2xl pointer-events-none z-10">
+    <div className="absolute top-1/2 left-16 -translate-y-1/2 max-w-4xl pointer-events-none z-10">
       <p
-        className="font-serif text-white text-2xl leading-relaxed italic transition-opacity"
+        className="font-serif text-white text-4xl leading-relaxed italic transition-opacity"
         style={{
           opacity: isFadingOut ? 0 : 1,
           transitionDuration: `${FADE_OUT_DURATION}ms`,
