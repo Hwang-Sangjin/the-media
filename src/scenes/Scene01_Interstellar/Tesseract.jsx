@@ -1,33 +1,58 @@
 import { useFrame } from "@react-three/fiber";
-import { useTexture, OrbitControls } from "@react-three/drei";
-import { useRef } from "react";
+import { useTexture } from "@react-three/drei";
+import { useRef, useEffect } from "react";
 import * as THREE from "three";
 
 // ═════════════════════════════════════════════
-//  실제 이미지 4장
+//  실제 이미지 4장 — 앞/뒤/좌/우
 // ═════════════════════════════════════════════
 const IMAGE_PATHS = ["/img/1.jpg", "/img/2.jpg", "/img/3.jpg", "/img/4.jpg"];
 
+const DISTANCE = 5;
+
 // ═════════════════════════════════════════════
-//  Photo Plane — plane geometry 에 이미지 텍스처
+//  4면 배치 — 정면 / 오른쪽 / 뒤 / 왼쪽
 // ═════════════════════════════════════════════
-function PhotoPlane({ position, rotation, scale, texture, floatOffset }) {
+const LAYOUT = [
+  {
+    // 0번째 — 앞 (정면, scroll 0 일 때)
+    position: [0, 0, -DISTANCE],
+    rotation: [0, 0, 0],
+  },
+  {
+    // 1번째 — 오른쪽 (scroll 0.25 일 때)
+    position: [DISTANCE, 0, 0],
+    rotation: [0, -Math.PI / 2, 0],
+  },
+  {
+    // 2번째 — 뒤 (scroll 0.5 일 때)
+    position: [0, 0, DISTANCE],
+    rotation: [0, Math.PI, 0],
+  },
+  {
+    // 3번째 — 왼쪽 (scroll 0.75 일 때)
+    position: [-DISTANCE, 0, 0],
+    rotation: [0, Math.PI / 2, 0],
+  },
+];
+
+// ═════════════════════════════════════════════
+//  Photo Plane
+// ═════════════════════════════════════════════
+function PhotoPlane({ position, rotation, texture, floatOffset }) {
   const meshRef = useRef();
 
   useFrame((state) => {
     if (!meshRef.current) return;
 
-    // 미세한 떠다님 (각 plane 마다 다른 phase)
     const t = state.clock.elapsedTime;
     meshRef.current.position.y =
       position[1] + Math.sin(t * 0.5 + floatOffset) * 0.1;
-    meshRef.current.position.x =
-      position[0] + Math.cos(t * 0.4 + floatOffset) * 0.05;
   });
 
   return (
-    <mesh ref={meshRef} position={position} rotation={rotation} scale={scale}>
-      <planeGeometry args={[2, 1.5]} />
+    <mesh ref={meshRef} position={position} rotation={rotation}>
+      <planeGeometry args={[3, 2.25]} />
       <meshStandardMaterial
         map={texture}
         side={THREE.DoubleSide}
@@ -38,115 +63,68 @@ function PhotoPlane({ position, rotation, scale, texture, floatOffset }) {
 }
 
 // ═════════════════════════════════════════════
-//  Tesseract 메인
+//  카메라 회전 컨트롤러 — 스크롤에 따라 자동 회전
 // ═════════════════════════════════════════════
-export default function Tesseract({ scrollProgress = 0 }) {
-  // 이미지 텍스처 로드
-  const textures = useTexture(IMAGE_PATHS);
+function CameraRotator({ scrollProgress }) {
+  const targetRotationY = useRef(0);
 
-  // ═════════════════════════════════════════════
-  //  이미지 배치 — 영화 책장 컨셉
-  //  중심 빈 공간 + 사방으로 4장씩 (책장처럼)
-  //  대각선 4방향에도 깊이감 있게
-  // ═════════════════════════════════════════════
-  const layout = [];
+  useFrame(({ camera }) => {
+    // 스크롤 0~1 을 0~2π 로 변환 (한 바퀴)
+    const target = scrollProgress * Math.PI * 2;
 
-  // 사방 4면 (상/하/좌/우) — 각 면에 4개씩 = 16개
-  // 위쪽
-  for (let i = 0; i < 4; i++) {
-    layout.push({
-      position: [(i - 1.5) * 2.5, 4, -2 - i * 0.5],
-      rotation: [Math.PI / 6, 0, 0],
-      textureIndex: i % 4,
-    });
-  }
-  // 아래쪽
-  for (let i = 0; i < 4; i++) {
-    layout.push({
-      position: [(i - 1.5) * 2.5, -4, -2 - i * 0.5],
-      rotation: [-Math.PI / 6, 0, 0],
-      textureIndex: (i + 1) % 4,
-    });
-  }
-  // 왼쪽
-  for (let i = 0; i < 4; i++) {
-    layout.push({
-      position: [-5, (i - 1.5) * 2.5, -2 - i * 0.5],
-      rotation: [0, Math.PI / 6, 0],
-      textureIndex: (i + 2) % 4,
-    });
-  }
-  // 오른쪽
-  for (let i = 0; i < 4; i++) {
-    layout.push({
-      position: [5, (i - 1.5) * 2.5, -2 - i * 0.5],
-      rotation: [0, -Math.PI / 6, 0],
-      textureIndex: (i + 3) % 4,
-    });
-  }
+    // 부드러운 lerp
+    targetRotationY.current += (target - targetRotationY.current) * 0.05;
 
-  // 대각선 깊이 (4방향 — 1, 4, 7, 10시) — 각 방향 2장씩 = 8개
-  const diagonals = [
-    { x: 4, y: 3 }, // 1시
-    { x: 4, y: -3 }, // 4시
-    { x: -4, y: -3 }, // 7시
-    { x: -4, y: 3 }, // 10시
-  ];
-  diagonals.forEach((d, i) => {
-    for (let depth = 0; depth < 2; depth++) {
-      layout.push({
-        position: [d.x, d.y, -6 - depth * 3],
-        rotation: [
-          (Math.sign(d.y) * -Math.PI) / 8,
-          (Math.sign(d.x) * -Math.PI) / 8,
-          0,
-        ],
-        textureIndex: (i + depth) % 4,
-      });
+    // 카메라 위치 원점 고정, 회전만
+    camera.position.set(0, 0, 0);
+    camera.rotation.set(0, targetRotationY.current, 0);
+
+    // 디버그 로그 (가끔만)
+    if (Math.random() < 0.02) {
+      console.log(
+        "🎥 rotY:",
+        targetRotationY.current.toFixed(2),
+        "scroll:",
+        scrollProgress.toFixed(2),
+      );
     }
   });
 
-  // 안쪽 깊이감 — 카메라 정면 멀리
-  for (let i = 0; i < 4; i++) {
-    layout.push({
-      position: [(i - 1.5) * 3, 0, -12],
-      rotation: [0, 0, 0],
-      textureIndex: i % 4,
-    });
-  }
+  return null;
+}
+
+// ═════════════════════════════════════════════
+//  Tesseract 메인
+// ═════════════════════════════════════════════
+export default function Tesseract({ scrollProgress = 0 }) {
+  const textures = useTexture(IMAGE_PATHS);
+
+  useEffect(() => {
+    console.log("🌌 Tesseract mounted");
+    return () => console.log("🌌 Tesseract unmounted");
+  }, []);
+
+  console.log("🌌 Tesseract render, scrollProgress:", scrollProgress);
 
   return (
     <>
-      {/* OrbitControls — 마우스로 카메라 조작 */}
-      <OrbitControls
-        enablePan={true}
-        enableZoom={true}
-        enableRotate={true}
-        zoomSpeed={0.5}
-        rotateSpeed={0.5}
-      />
+      {/* 라이팅 */}
+      <ambientLight intensity={0.5} color="#ffeacc" />
+      <pointLight position={[0, 0, 0]} intensity={1.5} color="#ffeacc" />
 
-      {/* 라이팅 — 인터스텔라 무드 */}
-      <ambientLight intensity={0.3} color="#ffeacc" />
-      <pointLight position={[0, 0, 5]} intensity={0.8} color="#ffeacc" />
-      <pointLight position={[0, 5, -10]} intensity={0.5} color="#ff9966" />
+      {/* 카메라 회전 컨트롤러 */}
+      <CameraRotator scrollProgress={scrollProgress} />
 
-      {/* fog — 멀수록 어둠 속으로 사라짐 */}
-      <fog attach="fog" args={["#0a0604", 10, 30]} />
-
-      {/* 사진 plane들 */}
-      <group>
-        {layout.map((item, i) => (
-          <PhotoPlane
-            key={i}
-            position={item.position}
-            rotation={item.rotation}
-            scale={[1, 1, 1]}
-            texture={textures[item.textureIndex]}
-            floatOffset={i * 0.7}
-          />
-        ))}
-      </group>
+      {/* 4면 사진 */}
+      {LAYOUT.map((item, i) => (
+        <PhotoPlane
+          key={i}
+          position={item.position}
+          rotation={item.rotation}
+          texture={textures[i]}
+          floatOffset={i * 0.7}
+        />
+      ))}
     </>
   );
 }

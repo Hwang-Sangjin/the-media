@@ -541,7 +541,10 @@ export default function Scene01_Interstellar() {
       <div
         className="relative"
         style={{
-          height: phase === "default" && narrationComplete ? "300vh" : "100vh",
+          height:
+            (phase === "default" && narrationComplete) || stage === "tesseract"
+              ? "300vh"
+              : "100vh",
         }}
       />
     </>
