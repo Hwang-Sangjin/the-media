@@ -629,11 +629,7 @@ export default function Scene01_Interstellar() {
 
         {/* Narration */}
         {stage === "main" && phase === "default" && (
-          <Narration
-            active={true}
-            onComplete={handleNarrationComplete}
-            delay={1500} // ← SceneAudio delay 랑 같은 값
-          />
+          <Narration active={true} onComplete={handleNarrationComplete} />
         )}
 
         {/* Scroll Hint */}
