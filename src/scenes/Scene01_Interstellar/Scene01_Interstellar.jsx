@@ -13,10 +13,17 @@ import SceneAudio from "./SceneAudio";
 const INTRO_OVERLAY_DELAY = 500;
 const INTRO_OVERLAY_DURATION = 8000;
 
-// 종료 오버레이 — outro 후반부에 검은 막이 다시 덮임
 const OUTRO_OVERLAY_DELAY = 4000;
 const OUTRO_OVERLAY_DURATION = 4000;
-const OUTRO_OVERLAY_FADE_OUT_DURATION = 2000; // tesseract 진입 시 검은 막 걷힘
+const OUTRO_OVERLAY_FADE_OUT_DURATION = 2000;
+
+// ═════════════════════════════════════════════
+//  Title Phase 타이밍
+// ═════════════════════════════════════════════
+const TITLE_FADE_IN = 800; // 페이드인 (ms)
+const TITLE_HOLD = 1400; // 유지 (ms)
+const TITLE_FADE_OUT = 800; // 페이드아웃 (ms)
+const TITLE_TOTAL = TITLE_FADE_IN + TITLE_HOLD + TITLE_FADE_OUT; // 3000ms
 
 // ═════════════════════════════════════════════
 //  Phase 타이밍 상수
@@ -47,10 +54,10 @@ const BLEND_WEIGHT_MOVING = 0.5;
 //  Narration
 // ═════════════════════════════════════════════
 const NARRATION_LINES = [
-  { time: 3, text: "Do not go gentle into that good night," },
+  { time: 3, text: "Do not go gentle into that good night" },
   { time: 6, text: "Old age should burn and rave at close of day" },
   { time: 12, text: "Rage, rage against the dying of the light." },
-  { time: 18, text: "Though wise men at their end know dark is right," },
+  { time: 18, text: "Though wise men at their end know dark is right" },
   { time: 21, text: "Because their words had forked no lightning they" },
   { time: 24, text: "Do not go gentle into that good night." },
   { time: 29, text: "Rage, rage against the dying of the light." },
@@ -65,6 +72,64 @@ const FADE_OUT_DURATION = 600;
 // ═════════════════════════════════════════════
 function easeInOutCubic(t) {
   return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+}
+
+// ═════════════════════════════════════════════
+//  Scene Title — "INTERSTELLAR" 3초 표시
+// ═════════════════════════════════════════════
+function SceneTitle({ onComplete }) {
+  const [opacity, setOpacity] = useState(0);
+  const [transitionDuration, setTransitionDuration] = useState(TITLE_FADE_IN);
+  const onCompleteRef = useRef(onComplete);
+  onCompleteRef.current = onComplete;
+
+  useEffect(() => {
+    // 페이드인 시작
+    const fadeInTimer = setTimeout(() => {
+      setTransitionDuration(TITLE_FADE_IN);
+      setOpacity(1);
+    }, 50);
+
+    // 페이드아웃 시작
+    const fadeOutTimer = setTimeout(() => {
+      setTransitionDuration(TITLE_FADE_OUT);
+      setOpacity(0);
+    }, TITLE_FADE_IN + TITLE_HOLD);
+
+    // 완료 → default phase 전환
+    const completeTimer = setTimeout(() => {
+      onCompleteRef.current();
+    }, TITLE_TOTAL);
+
+    return () => {
+      clearTimeout(fadeInTimer);
+      clearTimeout(fadeOutTimer);
+      clearTimeout(completeTimer);
+    };
+  }, []);
+
+  return (
+    <div
+      className="absolute inset-0 flex items-center justify-center pointer-events-none z-20"
+      style={{
+        opacity,
+        transition: `opacity ${transitionDuration}ms ease-in-out`,
+      }}
+    >
+      <h1
+        className="text-white tracking-[0.4em] uppercase text-center"
+        style={{
+          fontFamily: "'Bebas Neue', 'Arial Narrow', sans-serif",
+          fontSize: "clamp(3.5rem, 9vw, 9rem)",
+          letterSpacing: "0.4em",
+          textShadow:
+            "0 0 80px rgba(255,220,150,0.5), 0 0 30px rgba(255,255,255,0.3), 0 2px 12px rgba(0,0,0,0.9)",
+        }}
+      >
+        INTERSTELLAR
+      </h1>
+    </div>
+  );
 }
 
 // ═════════════════════════════════════════════
@@ -116,6 +181,11 @@ function StageController({
       const bloomProgress = Math.min(progress * 2.5, 1);
       const bloomEased = easeInOutCubic(bloomProgress);
       newBloom = BLOOM_START + (BLOOM_DEFAULT - BLOOM_START) * bloomEased;
+    } else if (phase === "title") {
+      // title phase — 카메라 / 블랙홀 정적 유지
+      cameraZ = CAMERA_Z_DEFAULT;
+      newBhScale = BH_SCALE_DEFAULT;
+      newBloom = BLOOM_DEFAULT;
     } else if (phase === "default") {
       cameraZ = CAMERA_Z_DEFAULT;
       newBhScale = BH_SCALE_DEFAULT;
@@ -188,7 +258,7 @@ function BlackHoleAnimated({ bhScaleRef, bloomRef, blendWeightRef }) {
 // ═════════════════════════════════════════════
 //  Narration
 // ═════════════════════════════════════════════
-function Narration({ active, onComplete }) {
+function Narration({ active, onComplete, delay = 0 }) {
   const [currentLineIndex, setCurrentLineIndex] = useState(-1);
   const [typedText, setTypedText] = useState("");
   const [isFadingOut, setIsFadingOut] = useState(false);
@@ -206,46 +276,54 @@ function Narration({ active, onComplete }) {
   useEffect(() => {
     if (!active) return;
 
-    startTimeRef.current = Date.now();
     triggeredLinesRef.current = new Set();
     completeFiredRef.current = false;
 
-    const tick = () => {
-      const elapsed = Date.now() - startTimeRef.current;
-      const elapsedSec = elapsed / 1000;
+    const startTimer = setTimeout(() => {
+      startTimeRef.current = Date.now();
 
-      NARRATION_LINES.forEach((line, index) => {
-        if (elapsedSec >= line.time && !triggeredLinesRef.current.has(index)) {
-          triggeredLinesRef.current.add(index);
-          startLine(index);
+      // ✨ function 선언 — 호이스팅 되어서 재귀 호출 가능
+      function tick() {
+        const elapsed = Date.now() - startTimeRef.current;
+        const elapsedSec = elapsed / 1000;
+
+        NARRATION_LINES.forEach((line, index) => {
+          if (
+            elapsedSec >= line.time &&
+            !triggeredLinesRef.current.has(index)
+          ) {
+            triggeredLinesRef.current.add(index);
+            startLine(index);
+          }
+        });
+
+        if (
+          elapsed >= NARRATION_TOTAL_DURATION - FADE_OUT_DURATION &&
+          !completeFiredRef.current
+        ) {
+          completeFiredRef.current = true;
+          setIsFadingOut(true);
+
+          setTimeout(() => {
+            onCompleteRef.current();
+          }, FADE_OUT_DURATION);
         }
-      });
 
-      if (
-        elapsed >= NARRATION_TOTAL_DURATION - FADE_OUT_DURATION &&
-        !completeFiredRef.current
-      ) {
-        completeFiredRef.current = true;
-        setIsFadingOut(true);
-
-        setTimeout(() => {
-          onCompleteRef.current();
-        }, FADE_OUT_DURATION);
+        if (elapsed < NARRATION_TOTAL_DURATION) {
+          rafRef.current = requestAnimationFrame(tick);
+        }
       }
 
-      if (elapsed < NARRATION_TOTAL_DURATION) {
-        rafRef.current = requestAnimationFrame(tick);
-      }
-    };
-
-    rafRef.current = requestAnimationFrame(tick);
+      rafRef.current = requestAnimationFrame(tick);
+    }, delay);
 
     return () => {
+      clearTimeout(startTimer);
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
       if (typeTimerRef.current) clearTimeout(typeTimerRef.current);
       if (fadeTimerRef.current) clearTimeout(fadeTimerRef.current);
     };
-  }, [active]);
+  }, [active, delay]);
 
   const startLine = (index) => {
     if (typeTimerRef.current) clearTimeout(typeTimerRef.current);
@@ -287,11 +365,8 @@ function Narration({ active, onComplete }) {
 
   return (
     <div
-      className="absolute  left-12 md:left-16 pointer-events-none z-10"
-      style={{
-        top: "28%",
-        maxWidth: "min(42vw, 36rem)", // 블랙홀(우측) 안 침범하도록 좌측 영역에 가둠
-      }}
+      className="absolute left-12 md:left-16 pointer-events-none z-10"
+      style={{ top: "28%" }}
     >
       <p
         className="font-serif text-white leading-relaxed italic transition-opacity"
@@ -345,6 +420,7 @@ export default function Scene01_Interstellar() {
   const [outroOverlayOpacity, setOutroOverlayOpacity] = useState(0);
   const [outroOverlayMounted, setOutroOverlayMounted] = useState(false);
 
+  // ✨ phase: "intro" → "title" → "default" → "outro"
   const [phase, setPhase] = useState("intro");
   const [narrationComplete, setNarrationComplete] = useState(false);
 
@@ -386,7 +462,13 @@ export default function Scene01_Interstellar() {
     return () => window.removeEventListener("mousemove", handleMouseMove);
   }, []);
 
+  // ✨ intro → title
   const handleIntroComplete = useCallback(() => {
+    setPhase("title");
+  }, []);
+
+  // ✨ title → default
+  const handleTitleComplete = useCallback(() => {
     setPhase("default");
   }, []);
 
@@ -410,7 +492,7 @@ export default function Scene01_Interstellar() {
     }
   }, [phase, narrationComplete, rawScrollProgress]);
 
-  // outro 시작 → 종료 오버레이 페이드인 트리거
+  // outro 시작 → 종료 오버레이 페이드인
   useEffect(() => {
     if (phase !== "outro") return;
 
@@ -427,7 +509,7 @@ export default function Scene01_Interstellar() {
     };
   }, [phase]);
 
-  // tesseract 진입 → 종료 오버레이 페이드아웃 (검은 막 걷힘)
+  // tesseract 진입 → 종료 오버레이 페이드아웃
   useEffect(() => {
     if (stage !== "tesseract") return;
     if (!outroOverlayMounted) return;
@@ -461,14 +543,18 @@ export default function Scene01_Interstellar() {
 
   return (
     <>
+      {/* 인트로 음악 — intro phase */}
       {stage === "main" && phase === "intro" && (
         <SceneAudio src="/audio/scene01-intro.mp3" volume={0.7} />
       )}
+      {/* title phase — 무음 (잠깐 정적) */}
 
+      {/* 내레이션 음악 — default phase, narration 진행 중 */}
       {stage === "main" && phase === "default" && !narrationComplete && (
         <SceneAudio src="/audio/scene01-narration.mp3" volume={0.7} />
       )}
 
+      {/* 분위기 음악 — narration 끝난 후 */}
       {stage === "main" && phase === "default" && narrationComplete && (
         <SceneAudio src="/audio/scene01-default.mp3" volume={0.7} />
       )}
@@ -521,7 +607,7 @@ export default function Scene01_Interstellar() {
           />
         )}
 
-        {/* 종료 검은 오버레이 — outro 후반부에 검은 막 덮임, tesseract 진입 시 다시 걷힘 */}
+        {/* 종료 검은 오버레이 */}
         {outroOverlayMounted && (
           <div
             className="absolute inset-0 bg-black pointer-events-none"
@@ -536,14 +622,26 @@ export default function Scene01_Interstellar() {
           />
         )}
 
-        {stage === "main" && phase === "default" && (
-          <Narration active={true} onComplete={handleNarrationComplete} />
+        {/* ✨ Title Phase — "INTERSTELLAR" */}
+        {stage === "main" && phase === "title" && (
+          <SceneTitle onComplete={handleTitleComplete} />
         )}
 
+        {/* Narration */}
+        {stage === "main" && phase === "default" && (
+          <Narration
+            active={true}
+            onComplete={handleNarrationComplete}
+            delay={1500} // ← SceneAudio delay 랑 같은 값
+          />
+        )}
+
+        {/* Scroll Hint */}
         {stage === "main" && phase === "default" && (
           <ScrollHint show={narrationComplete} />
         )}
 
+        {/* Tesseract 안내 */}
         {stage === "tesseract" && (
           <div className="absolute top-8 left-1/2 -translate-x-1/2 font-mono text-white/40 text-xs tracking-widest pointer-events-none">
             TESSERACT — KEEP SCROLLING
@@ -551,6 +649,7 @@ export default function Scene01_Interstellar() {
         )}
       </div>
 
+      {/* 스크롤 영역 */}
       <div
         className="relative"
         style={{
