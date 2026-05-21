@@ -48,7 +48,7 @@ const BLEND_WEIGHT_MOVING = 0.5;
 // ═════════════════════════════════════════════
 const NARRATION_LINES = [
   { time: 3, text: "Do not go gentle into that good night," },
-  { time: 6, text: "Old age should burn and rave at close of day;" },
+  { time: 6, text: "Old age should burn and rave at close of day" },
   { time: 12, text: "Rage, rage against the dying of the light." },
   { time: 18, text: "Though wise men at their end know dark is right," },
   { time: 21, text: "Because their words had forked no lightning they" },
@@ -286,17 +286,30 @@ function Narration({ active, onComplete }) {
   const currentLine = NARRATION_LINES[currentLineIndex]?.text || "";
 
   return (
-    <div className="absolute top-1/2 left-16 -translate-y-1/2 max-w-4xl pointer-events-none z-10">
+    <div
+      className="absolute  left-12 md:left-16 pointer-events-none z-10"
+      style={{
+        top: "28%",
+        maxWidth: "min(42vw, 36rem)", // 블랙홀(우측) 안 침범하도록 좌측 영역에 가둠
+      }}
+    >
       <p
-        className="font-serif text-white text-4xl leading-relaxed italic transition-opacity"
+        className="font-serif text-white leading-relaxed italic transition-opacity"
         style={{
+          fontSize: "clamp(1.2rem, 3vw, 2.1rem)",
+          whiteSpace: "nowrap",
           opacity: isFadingOut ? 0 : 1,
           transitionDuration: `${FADE_OUT_DURATION}ms`,
+          textShadow:
+            "0 2px 12px rgba(0,0,0,0.95), 0 0 28px rgba(0,0,0,0.8), 0 0 60px rgba(0,0,0,0.6)",
         }}
       >
         {typedText}
         {typedText.length < currentLine.length && !isFadingOut && (
-          <span className="inline-block w-[2px] h-[1em] bg-white ml-1 align-middle animate-pulse" />
+          <span
+            className="inline-block w-[2px] h-[1em] bg-white ml-1 align-middle animate-pulse"
+            style={{ boxShadow: "0 0 8px rgba(0,0,0,0.9)" }}
+          />
         )}
       </p>
     </div>
