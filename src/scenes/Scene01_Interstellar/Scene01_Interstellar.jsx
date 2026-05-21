@@ -54,12 +54,12 @@ const BLEND_WEIGHT_MOVING = 0.5;
 //  Narration
 // ═════════════════════════════════════════════
 const NARRATION_LINES = [
-  { time: 3, text: "Do not go gentle into that good night" },
-  { time: 6, text: "Old age should burn and rave at close of day" },
-  { time: 12, text: "Rage, rage against the dying of the light." },
-  { time: 18, text: "Though wise men at their end know dark is right" },
-  { time: 21, text: "Because their words had forked no lightning they" },
-  { time: 24, text: "Do not go gentle into that good night." },
+  { time: 2.4, text: "Do not go gentle into that good night" },
+  { time: 6.2, text: "Old age should burn and rave at close of day" },
+  { time: 11.5, text: "Rage, rage against the dying of the light." },
+  { time: 17.6, text: "Though wise men at their end know dark is right" },
+  { time: 21.5, text: "Because their words had forked no lightning they" },
+  { time: 24.8, text: "Do not go gentle into that good night." },
   { time: 29, text: "Rage, rage against the dying of the light." },
 ];
 
