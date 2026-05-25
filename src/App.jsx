@@ -9,15 +9,44 @@ import { useKeyboardNavigation } from "./hooks/useKeyboardNavigation";
 import Transition from "./components/Transition/Transition";
 import DotNavigation from "./components/Navigation/DotNavigation";
 import Header from "./components/Navigation/Header";
-import { useEffect } from "react"; // 추가
+import { useEffect, useRef } from "react";
 import Preloader3D from "./components/Preloader3D/Preloader3D";
+import Lenis from "lenis";
+import "lenis/dist/lenis.css";
 
 function App() {
   const currentScene = useSceneStore((state) => state.currentScene);
-  useKeyboardNavigation(); // 추가
+  const lenisRef = useRef(null);
 
+  useKeyboardNavigation();
+
+  // ── Lenis 스무스 스크롤 초기화 ──────────────
+  useEffect(() => {
+    const lenis = new Lenis({
+      duration: 1.4,
+      easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
+      smoothWheel: true,
+      wheelMultiplier: 0.8,
+      touchMultiplier: 1.5,
+      autoRaf: true, // R3F 충돌 방지 — Lenis 가 자체 RAF 관리
+    });
+
+    lenisRef.current = lenis;
+
+    return () => {
+      lenis.destroy();
+      lenisRef.current = null;
+    };
+  }, []);
+
+  // ── 씬 변경 시 스크롤 리셋 ──────────────────
   useEffect(() => {
     window.scrollTo(0, 0);
+
+    // Lenis 도 같이 리셋
+    if (lenisRef.current) {
+      lenisRef.current.scrollTo(0, { immediate: true });
+    }
   }, [currentScene]);
 
   const renderScene = () => {
@@ -40,7 +69,7 @@ function App() {
   };
 
   return (
-    <div className="relative w-screen h-screen ">
+    <div className="relative w-screen min-h-screen">
       {renderScene()}
       <Header />
       <DotNavigation />

@@ -1,21 +1,7 @@
 import { useFrame } from "@react-three/fiber";
-import { useTexture, Line } from "@react-three/drei";
-import { useRef, useState, useMemo, useCallback, useEffect } from "react";
+import { Line } from "@react-three/drei";
+import { useRef, useState, useMemo } from "react";
 import * as THREE from "three";
-
-// ═════════════════════════════════════════════
-//  이미지 4장
-// ═════════════════════════════════════════════
-const IMAGE_PATHS = ["/img/1.jpg", "/img/2.jpg", "/img/3.jpg", "/img/4.jpg"];
-
-const DISTANCE = 5;
-
-const LAYOUT = [
-  { position: [0, 0, -DISTANCE], rotation: [0, 0, 0] },
-  { position: [DISTANCE, 0, 0], rotation: [0, -Math.PI / 2, 0] },
-  { position: [0, 0, DISTANCE], rotation: [0, Math.PI, 0] },
-  { position: [-DISTANCE, 0, 0], rotation: [0, Math.PI / 2, 0] },
-];
 
 // ═════════════════════════════════════════════
 //  터널 상수
@@ -30,7 +16,6 @@ const INTRO_DURATION = 5000; // 5초
 //  격자 프레임 하나
 // ═════════════════════════════════════════════
 function TunnelFrame({ z }) {
-  // 외곽 사각형
   const outer = useMemo(
     () => [
       new THREE.Vector3(-FRAME_W / 2, -FRAME_H / 2, 0),
@@ -42,7 +27,6 @@ function TunnelFrame({ z }) {
     [],
   );
 
-  // 수평 분할선 (1/3, 2/3)
   const h1 = useMemo(
     () => [
       new THREE.Vector3(-FRAME_W / 2, -FRAME_H / 6, 0),
@@ -57,8 +41,6 @@ function TunnelFrame({ z }) {
     ],
     [],
   );
-
-  // 수직 분할선 (1/3, 2/3)
   const v1 = useMemo(
     () => [
       new THREE.Vector3(-FRAME_W / 6, -FRAME_H / 2, 0),
@@ -76,9 +58,7 @@ function TunnelFrame({ z }) {
 
   return (
     <group position={[0, 0, z]}>
-      {/* 외곽선 — 밝게 */}
       <Line points={outer} color="#ffffff" lineWidth={1.2} />
-      {/* 분할선 — 어둡게 */}
       <Line
         points={h1}
         color="#aaaaff"
@@ -141,9 +121,9 @@ function CameraFlash({ opacity }) {
 }
 
 // ═════════════════════════════════════════════
-//  인트로 터널
+//  인트로 터널 — 무한 반복
 // ═════════════════════════════════════════════
-function IntroTunnel({ onComplete }) {
+function IntroTunnel() {
   const startTimeRef = useRef(null);
   const completeFiredRef = useRef(false);
   const [internalFlash, setInternalFlash] = useState(0);
@@ -160,7 +140,7 @@ function IntroTunnel({ onComplete }) {
     const elapsed = Date.now() - startTimeRef.current;
     const rawT = Math.min(elapsed / INTRO_DURATION, 1);
 
-    // ─── 가속 커브 ─────────────────────────────
+    // ─── 가속 커브 ───────────────────────────
     // 0~60%: 천천히 시작
     // 60~100%: 매우 빠르게 가속
     let t;
@@ -183,12 +163,18 @@ function IntroTunnel({ onComplete }) {
     if (rawT > 0.8) {
       const ft = (rawT - 0.8) / 0.2;
       setInternalFlash(Math.pow(ft, 1.5));
+    } else {
+      setInternalFlash(0);
     }
 
-    // 완료
+    // ✨ 완료 → 처음부터 다시 (무한 반복)
     if (rawT >= 1 && !completeFiredRef.current) {
       completeFiredRef.current = true;
-      onComplete();
+      setTimeout(() => {
+        startTimeRef.current = Date.now();
+        completeFiredRef.current = false;
+        setInternalFlash(0);
+      }, 150); // 플래시 잠깐 유지 후 리셋
     }
   });
 
@@ -214,108 +200,15 @@ function IntroTunnel({ onComplete }) {
         <TunnelFrame key={i} z={z} />
       ))}
 
-      {/* 내부 플래시 */}
+      {/* 플래시 */}
       <CameraFlash opacity={internalFlash} />
     </>
   );
 }
 
 // ═════════════════════════════════════════════
-//  Photo Plane
-// ═════════════════════════════════════════════
-function PhotoPlane({ position, rotation, texture, floatOffset }) {
-  const meshRef = useRef();
-
-  useFrame((state) => {
-    if (!meshRef.current) return;
-    const t = state.clock.elapsedTime;
-    meshRef.current.position.y =
-      position[1] + Math.sin(t * 0.5 + floatOffset) * 0.1;
-  });
-
-  return (
-    <mesh ref={meshRef} position={position} rotation={rotation}>
-      <planeGeometry args={[3, 2.25]} />
-      <meshStandardMaterial
-        map={texture}
-        side={THREE.DoubleSide}
-        toneMapped={false}
-      />
-    </mesh>
-  );
-}
-
-// ═════════════════════════════════════════════
-//  카메라 회전 (default phase)
-// ═════════════════════════════════════════════
-function CameraRotator({ scrollProgress }) {
-  const targetRotationY = useRef(0);
-
-  useFrame(({ camera }) => {
-    const target = scrollProgress * Math.PI * 2;
-    targetRotationY.current += (target - targetRotationY.current) * 0.05;
-    camera.position.set(0, 0, 0);
-    camera.rotation.set(0, targetRotationY.current, 0);
-  });
-
-  return null;
-}
-
-// ═════════════════════════════════════════════
-//  메인
+//  메인 — intro 만 무한 재생
 // ═════════════════════════════════════════════
 export default function Tesseract({ scrollProgress = 0 }) {
-  const [tessPhase, setTessPhase] = useState("intro");
-  const [transFlash, setTransFlash] = useState(0);
-  const textures = useTexture(IMAGE_PATHS);
-
-  const handleIntroComplete = useCallback(() => {
-    // 즉시 최대 밝기로 전환
-    setTransFlash(1);
-    setTessPhase("default");
-
-    // 서서히 페이드아웃
-    const startTime = Date.now();
-    function fade() {
-      const elapsed = Date.now() - startTime;
-      const t = Math.min(elapsed / 800, 1);
-      const eased = 1 - t * t;
-      setTransFlash(eased);
-      if (t < 1) requestAnimationFrame(fade);
-      else setTransFlash(0);
-    }
-    requestAnimationFrame(fade);
-  }, []);
-
-  return (
-    <>
-      {/* ── intro phase ── */}
-      {tessPhase === "intro" && (
-        <IntroTunnel onComplete={handleIntroComplete} />
-      )}
-
-      {/* ── 전환 플래시 — phase 바뀌어도 유지 ── */}
-      <CameraFlash opacity={transFlash} />
-
-      {/* ── default phase ── */}
-      {tessPhase === "default" && (
-        <>
-          <ambientLight intensity={0.5} color="#ffeacc" />
-          <pointLight position={[0, 0, 0]} intensity={1.5} color="#ffeacc" />
-
-          <CameraRotator scrollProgress={scrollProgress} />
-
-          {LAYOUT.map((item, i) => (
-            <PhotoPlane
-              key={i}
-              position={item.position}
-              rotation={item.rotation}
-              texture={textures[i]}
-              floatOffset={i * 0.7}
-            />
-          ))}
-        </>
-      )}
-    </>
-  );
+  return <IntroTunnel />;
 }
