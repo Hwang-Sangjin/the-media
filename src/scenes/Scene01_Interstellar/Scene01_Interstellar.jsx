@@ -6,6 +6,7 @@ import Spaceship from "./Spaceship";
 import Tesseract from "./Tesseract";
 import SceneAudio from "./SceneAudio";
 import HtmlSection, { HTML_SECTION_HEIGHT } from "./HtmlSection";
+import MillerPlanet from "./MillerPlanet";
 
 // ═════════════════════════════════════════════
 //  상수
@@ -428,13 +429,6 @@ export default function Scene01_Interstellar() {
           delay={1500}
         />
       )}
-      {phase === "default" && narrationComplete && (
-        <SceneAudio
-          src="/audio/scene01-default.mp3"
-          volume={0.7}
-          delay={1500}
-        />
-      )}
 
       {/* ══════════════════════════
           1. BlackHole Canvas
@@ -453,6 +447,7 @@ export default function Scene01_Interstellar() {
               blendWeightRef={blendWeightRef}
             />
             <Spaceship mousePosition={mousePosition} />
+            <MillerPlanet />
             <StageController
               phase={phase}
               bhScaleRef={bhScaleRef}
