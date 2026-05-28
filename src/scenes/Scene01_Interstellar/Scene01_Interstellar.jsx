@@ -5,7 +5,6 @@ import BlackHole from "./BlackHole";
 import Spaceship from "./Spaceship";
 import Tesseract from "./Tesseract";
 import SceneAudio from "./SceneAudio";
-import HtmlSection, { HTML_SECTION_HEIGHT } from "./HtmlSection";
 import MillerPlanet from "./MillerPlanet";
 import TarsSection from "./TarsSection";
 
@@ -300,6 +299,9 @@ function Narration({ active, onComplete, delay = 0 }) {
   );
 }
 
+// ═════════════════════════════════════════════
+//  Scroll Hint
+// ═════════════════════════════════════════════
 function ScrollHint({ show }) {
   return (
     <div
@@ -316,7 +318,6 @@ function ScrollHint({ show }) {
 // ═════════════════════════════════════════════
 function TesseractSection({ onEnd }) {
   const sectionRef = useRef(null);
-  const scrollProgress = useRef(0);
   const [progress, setProgress] = useState(0);
   const onEndRef = useRef(onEnd);
   onEndRef.current = onEnd;
@@ -329,7 +330,6 @@ function TesseractSection({ onEnd }) {
       const scrolled = -rect.top;
       const p = Math.min(Math.max(scrolled / total, 0), 1);
       setProgress(p);
-
       if (p >= 0.95) onEndRef.current();
     };
 
@@ -346,7 +346,6 @@ function TesseractSection({ onEnd }) {
         background: "#000",
       }}
     >
-      {/* Canvas 를 sticky 로 — 스크롤해도 화면에 고정 */}
       <div style={{ position: "sticky", top: 0, height: "100vh" }}>
         <Canvas camera={{ position: [0, 0, 0], fov: 80 }}>
           <ambientLight intensity={0.8} />
@@ -432,8 +431,7 @@ export default function Scene01_Interstellar() {
       )}
 
       {/* ══════════════════════════
-          1. BlackHole Canvas
-          sticky 로 스크롤해도 화면에 고정
+          1. BlackHole Canvas — sticky
       ══════════════════════════ */}
       <div
         style={{ height: "100vh", position: "relative", background: "#000" }}
@@ -458,7 +456,7 @@ export default function Scene01_Interstellar() {
             />
           </Canvas>
 
-          {/* 오버레이 */}
+          {/* 진입 오버레이 */}
           {overlayMounted && (
             <div
               className="absolute inset-0 bg-black pointer-events-none"
@@ -477,14 +475,21 @@ export default function Scene01_Interstellar() {
               delay={1500}
             />
           )}
-          {phase === "default" && <ScrollHint show={narrationComplete} />}
+          {phase === "default" && <ScrollHint show={true} />}
         </div>
       </div>
 
-      {/* TARS 섹션 */}
-      {narrationComplete && <TarsSection onEnd={() => {}} />}
+      {/* ══════════════════════════
+          2. TARS 섹션
+          intro 끝나면 (phase=default) 바로 마운트
+          → narration 진행 중에도 스크롤 가능
+      ══════════════════════════ */}
+      {phase === "default" && <TarsSection onEnd={() => {}} />}
 
-      {narrationComplete && <TesseractSection onEnd={handleTesseractEnd} />}
+      {/* ══════════════════════════
+          3. Tesseract Canvas — sticky
+      ══════════════════════════ */}
+      {phase === "default" && <TesseractSection onEnd={handleTesseractEnd} />}
     </>
   );
 }
