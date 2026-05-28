@@ -7,6 +7,7 @@ import Tesseract from "./Tesseract";
 import SceneAudio from "./SceneAudio";
 import HtmlSection, { HTML_SECTION_HEIGHT } from "./HtmlSection";
 import MillerPlanet from "./MillerPlanet";
+import TarsSection from "./TarsSection";
 
 // ═════════════════════════════════════════════
 //  상수
@@ -480,16 +481,9 @@ export default function Scene01_Interstellar() {
         </div>
       </div>
 
-      {/* ══════════════════════════
-          2. HTML 섹션
-          narration 끝나면 표시
-      ══════════════════════════ */}
-      {narrationComplete && <HtmlSection />}
+      {/* TARS 섹션 */}
+      {narrationComplete && <TarsSection onEnd={() => {}} />}
 
-      {/* ══════════════════════════
-          3. Tesseract Canvas
-          narration 끝나면 표시
-      ══════════════════════════ */}
       {narrationComplete && <TesseractSection onEnd={handleTesseractEnd} />}
     </>
   );
