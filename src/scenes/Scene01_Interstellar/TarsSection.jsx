@@ -1,47 +1,41 @@
 import { useRef, useState, useEffect } from "react";
-import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { Html } from "@react-three/drei";
+import { Canvas, useFrame } from "@react-three/fiber";
+import { Html, useGLTF } from "@react-three/drei";
+import * as THREE from "three";
 
-// ═════════════════════════════════════════════
-//  TARS 섹션 높이
-// ═════════════════════════════════════════════
 export const TARS_SECTION_HEIGHT = 600; // vh
 
 // ═════════════════════════════════════════════
-//  카메라 컨트롤러 — 스크롤 진행에 따라 이동
+//  카메라 컨트롤러
 // ═════════════════════════════════════════════
 function CameraController({ progress }) {
   useFrame(({ camera }) => {
-    // 0~30%: 클로즈업 (모니터 정면)
-    // 30~60%: 줌아웃 (TARS 전체)
-    // 60~100%: 옆/위로 이동 (우주 유영)
-
-    let targetZ, targetX, targetY;
+    let targetX, targetY, targetZ;
 
     if (progress < 0.3) {
       // 모니터 클로즈업
       const t = progress / 0.3;
-      targetZ = 2 - t * 0.5;
+      targetZ = 1.5 - t * 0.3;
       targetX = 0;
-      targetY = 0;
+      targetY = 0.1;
     } else if (progress < 0.6) {
-      // 줌아웃
+      // 줌아웃 — TARS 전체 등장
       const t = (progress - 0.3) / 0.3;
-      targetZ = 1.5 + t * 6;
-      targetX = t * 2;
-      targetY = t * 0.5;
+      const ease = t * t * (3 - 2 * t);
+      targetZ = 1.2 + ease * 5;
+      targetX = ease * 1.5;
+      targetY = 0.1 - ease * 0.3;
     } else {
-      // 우주 유영 — 카메라가 천천히 공전
+      // 우주 유영
       const t = (progress - 0.6) / 0.4;
-      targetZ = 7.5 + Math.sin(t * Math.PI) * 1;
-      targetX = 2 + Math.cos(t * Math.PI * 0.5) * 1.5;
-      targetY = 0.5 + Math.sin(t * Math.PI * 0.3) * 0.5;
+      targetZ = 6.2 + Math.sin(t * Math.PI) * 0.5;
+      targetX = 1.5 + Math.cos(t * Math.PI * 0.5) * 1;
+      targetY = -0.2 + Math.sin(t * Math.PI * 0.3) * 0.3;
     }
 
-    // 부드러운 lerp
-    camera.position.x += (targetX - camera.position.x) * 0.05;
-    camera.position.y += (targetY - camera.position.y) * 0.05;
-    camera.position.z += (targetZ - camera.position.z) * 0.05;
+    camera.position.x += (targetX - camera.position.x) * 0.04;
+    camera.position.y += (targetY - camera.position.y) * 0.04;
+    camera.position.z += (targetZ - camera.position.z) * 0.04;
     camera.lookAt(0, 0, 0);
   });
 
@@ -49,77 +43,7 @@ function CameraController({ progress }) {
 }
 
 // ═════════════════════════════════════════════
-//  TARS Placeholder — 추후 3D 모델로 교체
-// ═════════════════════════════════════════════
-function TarsModel({ progress }) {
-  const groupRef = useRef();
-
-  useFrame(({ clock }) => {
-    if (!groupRef.current) return;
-
-    // 우주 유영 — 60% 이후 천천히 회전
-    if (progress > 0.6) {
-      const t = (progress - 0.6) / 0.4;
-      groupRef.current.rotation.y = clock.elapsedTime * 0.1 * t;
-      groupRef.current.position.y = Math.sin(clock.elapsedTime * 0.3) * 0.1 * t;
-    } else {
-      groupRef.current.rotation.y = 0;
-      groupRef.current.position.y = 0;
-    }
-  });
-
-  return (
-    <group ref={groupRef}>
-      {/* TARS 본체 placeholder — 직사각형 패널 */}
-      <mesh>
-        <boxGeometry args={[0.8, 2.0, 0.15]} />
-        <meshStandardMaterial color="#1a1a1a" metalness={0.8} roughness={0.3} />
-      </mesh>
-
-      {/* 모니터 패널 — 앞면 */}
-      <mesh position={[0, 0.3, 0.08]}>
-        <planeGeometry args={[0.7, 0.9]} />
-        <meshBasicMaterial color="#000000" />
-      </mesh>
-
-      {/* 하단 패널 */}
-      <mesh position={[0, -0.55, 0.08]}>
-        <planeGeometry args={[0.7, 0.7]} />
-        <meshBasicMaterial color="#0a0a0a" />
-      </mesh>
-
-      {/* TARS 로고 (점 패턴) */}
-      {[
-        [-0.15, -0.45],
-        [-0.05, -0.45],
-        [0.05, -0.45],
-        [-0.15, -0.55],
-        [0.05, -0.55],
-        [-0.15, -0.65],
-        [-0.05, -0.65],
-        [0.05, -0.65],
-      ].map(([x, y], i) => (
-        <mesh key={i} position={[x, y, 0.09]}>
-          <circleGeometry args={[0.025, 8]} />
-          <meshBasicMaterial color="#8B4513" />
-        </mesh>
-      ))}
-
-      {/* ── HTML 터미널 텍스트 — 모니터 위치 ── */}
-      <Html
-        position={[0, 0.3, 0.09]}
-        transform
-        occlude
-        style={{ width: "280px", height: "360px", overflow: "hidden" }}
-      >
-        <TerminalText progress={progress} />
-      </Html>
-    </group>
-  );
-}
-
-// ═════════════════════════════════════════════
-//  터미널 텍스트 — HTML in Canvas
+//  터미널 텍스트 (Html in Canvas)
 // ═════════════════════════════════════════════
 function TerminalText({ progress }) {
   const lines = [
@@ -129,64 +53,118 @@ function TerminalText({ progress }) {
     "> SUBJECT: HWANG SANGJIN",
     "> CODENAME: JIN",
     "> ROLE: MEDIA ENGINEER",
-    "> LOCATION: SEOUL, KR",
+    "> LOCATION: SEOUL, KR — 37.5665°N 126.9780°E",
     "> STATUS: ACTIVE",
     "",
     "> SCANNING CAREER LOG...",
-    "> [2019] SOONGSIL UNIV",
-    "> [2021] ITEMSCOUT",
-    "> [2022] MOBILTECH",
-    "> [2023] NAVER LABS ◀ CURRENT",
+    "> [2019] SOONGSIL UNIV — GLOBAL MEDIA",
+    "> [2021] ITEMSCOUT — FRONTEND",
+    "> [2022] MOBILTECH — ENGINEER",
+    "> [2023] NAVER LABS — ◀ CURRENT",
     "",
     "> CORE MODULES:",
     "> ├─ REACT      ██████████ 90%",
     "> ├─ THREE.JS   ████████░░ 80%",
     "> └─ GLSL       ███████░░░ 70%",
     "",
+    "> HUMOR.exe    75%",
+    "> HONESTY.exe  90%",
+    "",
     "> READY. _",
   ];
 
-  // 0~30% 구간에서 순차적으로 줄 표시
   const totalLines = lines.length;
-  const visibleCount = Math.floor(Math.min(progress / 0.3, 1) * totalLines);
+  // 0~30% 구간에서 순차 등장
+  const visibleCount = Math.floor(Math.min(progress / 0.28, 1) * totalLines);
 
   return (
     <div
       style={{
         width: "100%",
         height: "100%",
-        background: "#000",
-        padding: "12px",
-        fontFamily: "monospace",
-        fontSize: "11px",
+        background: "rgba(0,0,0,0.92)",
+        padding: "10px 14px",
+        fontFamily: "'Courier New', monospace",
+        fontSize: "10px",
         color: "#00ff41",
-        lineHeight: "1.6",
+        lineHeight: "1.65",
         overflow: "hidden",
+        boxSizing: "border-box",
+        textShadow: "0 0 8px rgba(0,255,65,0.6)",
       }}
     >
       {lines.slice(0, visibleCount).map((line, i) => (
         <div key={i}>{line || "\u00A0"}</div>
       ))}
-      {/* 커서 */}
-      {visibleCount < totalLines && <div style={{ display: "inline" }}>█</div>}
+      {visibleCount < totalLines && (
+        <span
+          style={{
+            animation: "none",
+            opacity: Math.sin(Date.now() / 300) > 0 ? 1 : 0,
+          }}
+        >
+          █
+        </span>
+      )}
     </div>
   );
 }
 
 // ═════════════════════════════════════════════
-//  별 배경 — 60% 이후 등장
+//  TARS 3D 모델
+// ═════════════════════════════════════════════
+function TarsModel({ progress }) {
+  const groupRef = useRef();
+  const { scene } = useGLTF("/models/tars/scene.gltf");
+
+  useFrame(({ clock }) => {
+    if (!groupRef.current) return;
+    const t = clock.elapsedTime;
+
+    if (progress > 0.6) {
+      // 우주 유영 — 느린 회전
+      const p = (progress - 0.6) / 0.4;
+      groupRef.current.rotation.y = t * 0.08 * p;
+      groupRef.current.position.y = Math.sin(t * 0.25) * 0.08 * p;
+    } else {
+      groupRef.current.rotation.y = 0;
+      groupRef.current.position.y = 0;
+    }
+  });
+
+  return (
+    <group ref={groupRef} rotation={[0, 0.3, 0]}>
+      <primitive object={scene} />
+
+      {/* 모니터 패널 위치에 Html 터미널 부착 */}
+      <Html
+        position={[0, 0.15, 0.08]}
+        transform
+        occlude
+        style={{
+          width: "240px",
+          height: "340px",
+          overflow: "hidden",
+          pointerEvents: "none",
+        }}
+      >
+        <TerminalText progress={progress} />
+      </Html>
+    </group>
+  );
+}
+
+// ═════════════════════════════════════════════
+//  별 배경
 // ═════════════════════════════════════════════
 function StarField({ progress }) {
-  const starsRef = useRef();
   const opacity = Math.max(0, (progress - 0.5) / 0.2);
-
-  // 별 1000개 랜덤 위치
   const positions = useRef(
-    Float32Array.from({ length: 3000 }, () => (Math.random() - 0.5) * 50),
+    Float32Array.from({ length: 3000 }, () => (Math.random() - 0.5) * 60),
   );
 
   return (
-    <points ref={starsRef}>
+    <points>
       <bufferGeometry>
         <bufferAttribute
           attach="attributes-position"
@@ -194,30 +172,13 @@ function StarField({ progress }) {
         />
       </bufferGeometry>
       <pointsMaterial
-        size={0.05}
+        size={0.06}
         color="#ffffff"
         transparent
         opacity={opacity}
         sizeAttenuation
       />
     </points>
-  );
-}
-
-// ═════════════════════════════════════════════
-//  TarsScene — Canvas 내부
-// ═════════════════════════════════════════════
-function TarsScene({ progress }) {
-  return (
-    <>
-      <ambientLight intensity={0.3} />
-      <pointLight position={[5, 5, 5]} intensity={1.5} color="#ffffff" />
-      <pointLight position={[-3, 2, 2]} intensity={0.5} color="#aabbff" />
-
-      <CameraController progress={progress} />
-      <TarsModel progress={progress} />
-      <StarField progress={progress} />
-    </>
   );
 }
 
@@ -238,7 +199,6 @@ export default function TarsSection({ onEnd }) {
       const scrolled = -rect.top;
       const p = Math.min(Math.max(scrolled / total, 0), 1);
       setProgress(p);
-
       if (p >= 0.95) onEndRef.current();
     };
 
@@ -256,22 +216,34 @@ export default function TarsSection({ onEnd }) {
       }}
     >
       <div style={{ position: "sticky", top: 0, height: "100vh" }}>
-        <Canvas camera={{ position: [0, 0, 2], fov: 60 }}>
-          <TarsScene progress={progress} />
+        <Canvas camera={{ position: [0, 0.1, 1.5], fov: 55 }}>
+          <ambientLight intensity={0.4} />
+          <pointLight position={[3, 3, 3]} intensity={2} color="#ffffff" />
+          <pointLight position={[-2, 1, 2]} intensity={0.8} color="#aabbff" />
+          <pointLight position={[0, -2, 1]} intensity={0.3} color="#334466" />
+
+          <CameraController progress={progress} />
+          <TarsModel progress={progress} />
+          <StarField progress={progress} />
         </Canvas>
 
-        {/* 진행도 힌트 */}
+        {/* 진행 안내 */}
         <div
-          className="absolute bottom-8 left-1/2 -translate-x-1/2 font-mono text-white/30 text-xs tracking-widest pointer-events-none"
-          style={{ opacity: progress < 0.95 ? 1 : 0 }}
+          className="absolute bottom-8 left-1/2 -translate-x-1/2 font-mono text-xs tracking-widest pointer-events-none"
+          style={{
+            color: progress < 0.95 ? "rgba(0,255,65,0.4)" : "transparent",
+            transition: "color 0.5s",
+          }}
         >
           {progress < 0.3
-            ? "LOADING TARS DATA..."
+            ? "> LOADING..."
             : progress < 0.6
-              ? "ESTABLISHING CONNECTION..."
-              : "TARS ONLINE"}
+              ? "> ESTABLISHING CONNECTION..."
+              : "> TARS ONLINE — KEEP SCROLLING"}
         </div>
       </div>
     </div>
   );
 }
+
+useGLTF.preload("/models/tars/scene.gltf");

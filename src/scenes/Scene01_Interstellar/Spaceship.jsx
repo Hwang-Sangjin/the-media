@@ -12,9 +12,8 @@ import * as THREE from "three";
 const SCALE_INTRO = 0.008; // intro 때 크기
 const SCALE_DEFAULT = 0.002; // default 때 크기 (zoom out 완료)
 
-const POS_INTRO = [0.8, 0.3, -0.5]; // intro — 화면 중앙 약간 우상단
-const POS_DEFAULT = [3.5, 1.2, -8]; // default — 블랙홀 왼쪽 위 멀리
-
+const POS_INTRO = [-1.0, 0.3, -0.5]; // intro — 왼쪽으로
+const POS_DEFAULT = [-3.5, 1.2, -8]; // default — 밀러 행성 근처 왼쪽
 export default function Spaceship({
   mousePosition = { x: 0, y: 0 },
   bhScaleRef,
@@ -44,20 +43,11 @@ export default function Spaceship({
     groupRef.current.position.set(px, py, pz);
 
     // 엔듀런스 호 자체 회전 (링 구조가 돌아가는 느낌)
-    groupRef.current.rotation.z += 0.002;
-
-    // 마우스에 살짝 반응
-    groupRef.current.rotation.x +=
-      (mousePosition.y * 0.05 - groupRef.current.rotation.x) * 0.02;
-    groupRef.current.rotation.y +=
-      (mousePosition.x * 0.05 - groupRef.current.rotation.y) * 0.02;
-
-    // 미세 떠있는 효과
-    groupRef.current.position.y += Math.sin(t * 0.4) * 0.002 * (1 - progress);
+    groupRef.current.rotation.x += 0.005;
   });
 
   return (
-    <group ref={groupRef}>
+    <group rotation={[Math.PI / 4, 0, 0]} ref={groupRef}>
       <primitive object={scene} renderOrder={10000} />
     </group>
   );
