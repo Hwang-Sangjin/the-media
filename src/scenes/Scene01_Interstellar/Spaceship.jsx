@@ -1,53 +1,48 @@
 import { useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import { useGLTF } from "@react-three/drei";
-import * as THREE from "three";
 
-// ═════════════════════════════════════════════
-//  상수
-// ═════════════════════════════════════════════
-// 카메라 Z 값과 맞춰서 크기 계산
-// intro 시작: cameraZ=1.5 → 크게 보임
-// default: cameraZ=10 → 작게 보임
-const SCALE_INTRO = 0.008; // intro 때 크기
-const SCALE_DEFAULT = 0.002; // default 때 크기 (zoom out 완료)
+const SCALE = 0.003;
+const POS = [-2.5, 0.8, -5];
 
-const POS_INTRO = [-1.0, 0.3, -0.5]; // intro — 왼쪽으로
-const POS_DEFAULT = [-3.5, 1.2, -8]; // default — 밀러 행성 근처 왼쪽
-export default function Spaceship({
-  mousePosition = { x: 0, y: 0 },
-  bhScaleRef,
-  cameraZRef,
-}) {
+export default function Spaceship({ mousePosition = { x: 0, y: 0 } }) {
   const groupRef = useRef();
+  const targetRot = useRef({ x: 0, y: 0 });
+  const targetPos = useRef({ x: POS[0], y: POS[1] });
   const { scene } = useGLTF("/models/endurance/scene.gltf");
 
-  useFrame(({ camera, clock }) => {
+  useFrame(({ clock }) => {
     if (!groupRef.current) return;
-
     const t = clock.elapsedTime;
 
-    // 카메라 Z 위치로 intro → default 진행도 계산
-    // cameraZ: 1.5(intro) → 10(default)
-    const camZ = camera.position.z;
-    const progress = Math.min(Math.max((camZ - 1.5) / (10 - 1.5), 0), 1);
+    // ── 마우스 → 목표 회전값 ──────────────────
+    targetRot.current.y = mousePosition.x * 0.15;
+    targetRot.current.x = mousePosition.y * 0.08;
 
-    // 크기 — intro 크게, zoom out 되면서 작아짐
-    const scale = SCALE_INTRO + (SCALE_DEFAULT - SCALE_INTRO) * progress;
-    groupRef.current.scale.setScalar(scale);
+    // ── 마우스 → 목표 위치 (살짝 이동) ─────────
+    targetPos.current.x = POS[0] + mousePosition.x * 0.3;
+    targetPos.current.y = POS[1] + mousePosition.y * 0.15;
 
-    // 위치 — intro 중앙에서 zoom out 되면서 왼쪽 위로 이동
-    const px = POS_INTRO[0] + (POS_DEFAULT[0] - POS_INTRO[0]) * progress;
-    const py = POS_INTRO[1] + (POS_DEFAULT[1] - POS_INTRO[1]) * progress;
-    const pz = POS_INTRO[2] + (POS_DEFAULT[2] - POS_INTRO[2]) * progress;
-    groupRef.current.position.set(px, py, pz);
+    // ── 부드러운 lerp ────────────────────────
+    groupRef.current.rotation.y +=
+      (targetRot.current.y - groupRef.current.rotation.y) * 0.05;
+    groupRef.current.rotation.x +=
+      (targetRot.current.x - groupRef.current.rotation.x) * 0.05;
 
-    // 엔듀런스 호 자체 회전 (링 구조가 돌아가는 느낌)
-    groupRef.current.rotation.x += 0.005;
+    groupRef.current.position.x +=
+      (targetPos.current.x - groupRef.current.position.x) * 0.04;
+    groupRef.current.position.y +=
+      (targetPos.current.y - groupRef.current.position.y) * 0.04;
+
+    // ── 자체 Y축 회전 (링 구조) ──────────────
+    groupRef.current.rotation.y += 0.001;
+
+    // ── 미세 부유 ────────────────────────────
+    groupRef.current.position.z = POS[2] + Math.sin(t * 0.4) * 0.05;
   });
 
   return (
-    <group rotation={[Math.PI / 4, 0, 0]} ref={groupRef}>
+    <group ref={groupRef} position={POS} scale={SCALE}>
       <primitive object={scene} renderOrder={10000} />
     </group>
   );
